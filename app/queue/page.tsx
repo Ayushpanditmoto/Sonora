@@ -1,0 +1,5 @@
+"use client";
+import { ListMusic } from "lucide-react";
+import { SongList } from "@/components/song-list";
+import { usePlayer } from "@/store/player";
+export default function QueuePage() { const { queue, current } = usePlayer(); const upcoming = queue.filter(song => song.id !== current?.id); return <><div className="flex items-center gap-4"><div className="grid size-14 place-items-center rounded-lg bg-brand text-black"><ListMusic size={28}/></div><div><p className="text-xs font-bold uppercase tracking-widest text-zinc-400">Now playing</p><h1 className="text-3xl font-black">Your queue</h1></div></div>{current && <section className="mt-10"><h2 className="mb-3 text-lg font-bold">Now playing</h2><SongList songs={[current]}/></section>}<section className="mt-8"><h2 className="mb-3 text-lg font-bold">Next up</h2>{upcoming.length ? <SongList songs={upcoming}/> : <p className="rounded-lg bg-white/5 p-8 text-zinc-400">Your queue is empty. Play a song or album to start listening.</p>}</section></> }
