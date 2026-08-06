@@ -121,4 +121,4 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ---
 
-**Made with ❤️ by [Your Name](https://github.com/your-username)**
+**Made with ❤️ by [Ayush Pandit](https://github.com/ayushpanditmoto)**
