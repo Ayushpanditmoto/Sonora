@@ -10,6 +10,7 @@ type State = {
   toggle: () => void;
   next: () => void;
   toggleFavorite: (song: Song) => void;
+  clearPlayer: () => void;
 };
 export const usePlayer = create<State>((set, get) => ({
   queue: [],
@@ -34,4 +35,5 @@ export const usePlayer = create<State>((set, get) => ({
         ? s.favorites.filter((x) => x.id !== song.id)
         : [...s.favorites, song],
     })),
+  clearPlayer: () => set({ current: undefined, queue: [], isPlaying: false }),
 }));

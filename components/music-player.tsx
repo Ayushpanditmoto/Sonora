@@ -7,6 +7,7 @@ import {
   Pause,
   Play,
   SkipForward,
+  X, // ✅ Import X icon
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { usePlayer } from "@/store/player";
@@ -24,9 +25,10 @@ export function MusicPlayer() {
     isPlaying,
     toggle,
     next,
+    previous,
     favorites,
     toggleFavorite,
-    previous,
+    clearPlayer, // ✅ Add clearPlayer from store
   } = usePlayer();
   const audio = useRef<HTMLAudioElement>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -58,6 +60,12 @@ export function MusicPlayer() {
     } finally {
       setDownloading(false);
     }
+  };
+
+  const handleClose = () => {
+    // Pause audio and clear player state
+    audio.current?.pause();
+    clearPlayer();
   };
 
   return (
@@ -116,7 +124,7 @@ export function MusicPlayer() {
           </IconAction>
         </div>
 
-        {/* Action buttons – Download & Heart always visible, Queue hidden on mobile */}
+        {/* Action buttons – Download, Heart, Queue, and Close */}
         <div className="ml-auto flex items-center gap-2">
           <IconAction
             aria-label="Download song"
@@ -141,6 +149,15 @@ export function MusicPlayer() {
             className="hidden sm:flex"
           >
             <ListPlus size={19} />
+          </IconAction>
+
+          {/* ✅ Close button – always visible */}
+          <IconAction
+            aria-label="Close player"
+            onClick={handleClose}
+            className="text-zinc-400 hover:text-white transition-colors"
+          >
+            <X size={20} />
           </IconAction>
         </div>
       </div>
