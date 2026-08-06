@@ -36,13 +36,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-black text-white">
       {/* Desktop Sidebar */}
       <aside className="fixed inset-y-0 left-0 hidden w-72 border-r border-white/10 bg-zinc-950 md:flex md:flex-col">
-        <div className="flex items-center gap-3 p-8">
+        {/* 🔥 Clickable Sonora logo → navigates to home */}
+        <Link
+          href="/"
+          className="flex items-center gap-3 p-8 transition-opacity hover:opacity-80"
+        >
           <div className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-500">
             <ListMusic className="text-black" />
           </div>
-
           <h1 className="text-2xl font-black">Sonora</h1>
-        </div>
+        </Link>
 
         <nav className="space-y-2 px-4">
           {links.map(({ href, label, icon: Icon }) => (

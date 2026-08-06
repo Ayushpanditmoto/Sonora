@@ -1,12 +1,57 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import { saavn } from "@/services/api";
-export const useSongs = (query: string) => useQuery({ queryKey: ["songs", query], queryFn: () => saavn.searchSongs(query), enabled: !!query });
-export const useAlbums = (query: string) => useQuery({ queryKey: ["albums", query], queryFn: () => saavn.searchAlbums(query), enabled: !!query });
-export const useArtists = (query: string) => useQuery({ queryKey: ["artists", query], queryFn: () => saavn.searchArtists(query), enabled: !!query });
-export const usePlaylists = (query: string) => useQuery({ queryKey: ["playlists", query], queryFn: () => saavn.searchPlaylists(query), enabled: !!query });
-export const useSong = (id: string) => useQuery({ queryKey: ["song", id], queryFn: () => saavn.song(id), enabled: !!id });
-export const useSuggestions = (id: string) => useQuery({ queryKey: ["suggestions", id], queryFn: () => saavn.suggestions(id), enabled: !!id });
-export const useAlbum = (id: string) => useQuery({ queryKey: ["album", id], queryFn: () => saavn.album(id), enabled: !!id });
-export const useArtist = (id: string) => useQuery({ queryKey: ["artist", id], queryFn: () => saavn.artist(id), enabled: !!id });
-export const usePlaylist = (id: string) => useQuery({ queryKey: ["playlist", id], queryFn: () => saavn.playlist(id), enabled: !!id });
+export const useSongs = (query: string) =>
+  useQuery({
+    queryKey: ["songs", query],
+    queryFn: () => saavn.searchSongs(query),
+    enabled: !!query,
+  });
+export const useAlbums = (query: string) =>
+  useQuery({
+    queryKey: ["albums", query],
+    queryFn: () => saavn.searchAlbums(query),
+    enabled: !!query,
+  });
+export const useArtists = (query: string) =>
+  useQuery({
+    queryKey: ["artists", query],
+    queryFn: () => saavn.searchArtists(query),
+    enabled: !!query,
+  });
+export const usePlaylists = (query: string) =>
+  useQuery({
+    queryKey: ["playlists", query],
+    queryFn: () => saavn.searchPlaylists(query),
+    enabled: !!query,
+  });
+export const useSong = (id: string) =>
+  useQuery({
+    queryKey: ["song", id],
+    queryFn: () => saavn.song(id),
+    enabled: !!id,
+  });
+export const useSuggestions = (id: string) =>
+  useQuery({
+    queryKey: ["suggestions", id],
+    queryFn: () => saavn.suggestions(id),
+    enabled: !!id,
+  });
+export const useAlbum = (id: string) =>
+  useQuery({
+    queryKey: ["album", id],
+    queryFn: () => saavn.album(id),
+    enabled: !!id,
+  });
+export const useArtist = (id: string) =>
+  useQuery({
+    queryKey: ["artist", id],
+    queryFn: () => saavn.artist(id),
+    enabled: !!id,
+  });
+export const usePlaylist = (id: string) =>
+  useQuery({
+    queryKey: ["playlist", id],
+    queryFn: () => saavn.playlist(id),
+    enabled: !!id,
+  });

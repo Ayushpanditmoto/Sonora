@@ -1,6 +1,7 @@
 import type { Song } from "@/types/music";
 
-const filename = (name: string) => name.replace(/[\\/:*?"<>|]/g, "-").trim() || "sonora-track";
+const filename = (name: string) =>
+  name.replace(/[\\/:*?"<>|]/g, "-").trim() || "sonora-track";
 
 export async function downloadSong(song: Song) {
   const url = song.downloadUrl?.at(-1)?.url;
