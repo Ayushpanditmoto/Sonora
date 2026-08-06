@@ -19,8 +19,15 @@ import {
 } from "@/components/ui/styled";
 
 export function MusicPlayer() {
-  const { current, isPlaying, toggle, next, favorites, toggleFavorite } =
-    usePlayer();
+  const {
+    current,
+    isPlaying,
+    toggle,
+    next,
+    favorites,
+    toggleFavorite,
+    previous,
+  } = usePlayer();
   const audio = useRef<HTMLAudioElement>(null);
   const [elapsed, setElapsed] = useState(0);
   const [total, setTotal] = useState(0);
@@ -55,7 +62,7 @@ export function MusicPlayer() {
 
   return (
     <footer className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-zinc-950/95 backdrop-blur-xl shadow-2xl px-4 pt-1 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:pt-3">
-      <div className="absolute inset-x-0 top-0 flex items-center gap-2 px-3 text-[10px] text-zinc-400 md:px-6">
+      <div className="absolute inset-x-0 top-3 flex items-center gap-2 px-3 text-[10px] text-zinc-400 md:px-6">
         <span>{duration(elapsed)}</span>
         <ProgressTrack
           aria-label="Song progress"
@@ -67,7 +74,7 @@ export function MusicPlayer() {
         <span>{duration(total || current.duration)}</span>
       </div>
 
-      <div className="relative mt-5 flex min-h-[64px] items-center gap-4">
+      <div className="relative mt-7 flex min-h-[64px] items-center gap-4">
         <Image
           src={imageUrl(current.image)}
           alt=""
@@ -83,6 +90,13 @@ export function MusicPlayer() {
         </div>
 
         <div className="flex items-center gap-2 md:absolute md:left-1/2 md:-translate-x-1/2">
+          <IconAction
+            aria-label="Previous song"
+            onClick={previous}
+            className="hidden sm:grid"
+          >
+            <SkipForward size={20} className="rotate-180" />
+          </IconAction>
           <PlayerPlayButton
             aria-label={isPlaying ? "Pause" : "Play"}
             onClick={toggle}

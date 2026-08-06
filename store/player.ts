@@ -6,6 +6,7 @@ type State = {
   isPlaying: boolean;
   favorites: Song[];
   setCurrent: (song: Song, queue?: Song[]) => void;
+  previous: () => void;
   toggle: () => void;
   next: () => void;
   toggleFavorite: (song: Song) => void;
@@ -14,6 +15,11 @@ export const usePlayer = create<State>((set, get) => ({
   queue: [],
   isPlaying: false,
   favorites: [],
+  previous: () => {
+    const { current, queue } = get();
+    const i = queue.findIndex((s) => s.id === current?.id);
+    if (queue[i - 1]) set({ current: queue[i - 1], isPlaying: true });
+  },
   setCurrent: (current, queue = get().queue) =>
     set({ current, queue, isPlaying: true }),
   toggle: () => set((s) => ({ isPlaying: !s.isPlaying })),
