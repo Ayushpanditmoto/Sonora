@@ -3,6 +3,7 @@ import { use } from "react";
 import { usePlaylist } from "@/hooks/use-music";
 import { DetailHero } from "@/components/detail-hero";
 import { SongList } from "@/components/song-list";
+import { PageShimmer } from "@/components/loading-shimmer";
 export default function PlaylistPage({
   params,
 }: {
@@ -10,8 +11,7 @@ export default function PlaylistPage({
 }) {
   const { id } = use(params);
   const q = usePlaylist(id);
-  if (q.isLoading)
-    return <p className="animate-pulse text-zinc-400">Loading playlist…</p>;
+  if (q.isLoading) return <PageShimmer />; // ✅ no extra wrapper
   if (q.isError || !q.data)
     return <p className="text-red-300">Playlist unavailable.</p>;
   const playlist = q.data;

@@ -42,20 +42,6 @@ export default function Home() {
         <div className="absolute -right-24 -top-24 size-72 rounded-full bg-brand/30 blur-3xl" />
       </section>
 
-      {/* Albums Section */}
-      <section className="mt-10">
-        <h2 className="mb-5 text-2xl font-black">Popular albums</h2>
-        {albums.isLoading ? (
-          <CardsShimmer />
-        ) : albums.isError ? (
-          <p className="text-zinc-400">
-            Couldn’t load albums. Please try again.
-          </p>
-        ) : (
-          <Cards items={albums.data?.results || []} type="album" />
-        )}
-      </section>
-
       {/* 🆕 Playlists Section */}
       <section className="mt-10">
         <h2 className="mb-5 text-2xl font-black">Featured playlists</h2>
@@ -67,6 +53,20 @@ export default function Home() {
           </p>
         ) : (
           <Cards items={playlists.data?.results || []} type="playlist" />
+        )}
+      </section>
+
+      {/* Albums Section */}
+      <section className="mt-10">
+        <h2 className="mb-5 text-2xl font-black">Popular albums</h2>
+        {albums.isLoading ? (
+          <CardsShimmer />
+        ) : albums.isError ? (
+          <p className="text-zinc-400">
+            Couldn’t load albums. Please try again.
+          </p>
+        ) : (
+          <Cards items={albums.data?.results || []} type="album" />
         )}
       </section>
 
