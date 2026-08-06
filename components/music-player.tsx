@@ -7,7 +7,7 @@ import {
   Pause,
   Play,
   SkipForward,
-  X, // ✅ Import X icon
+  X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { usePlayer } from "@/store/player";
@@ -28,17 +28,65 @@ export function MusicPlayer() {
     previous,
     favorites,
     toggleFavorite,
-    clearPlayer, // ✅ Add clearPlayer from store
+    clearPlayer,
   } = usePlayer();
   const audio = useRef<HTMLAudioElement>(null);
   const [elapsed, setElapsed] = useState(0);
   const [total, setTotal] = useState(0);
   const [downloading, setDownloading] = useState(false);
 
+  // Audio sync
   useEffect(() => {
     if (isPlaying) audio.current?.play().catch(() => undefined);
     else audio.current?.pause();
   }, [isPlaying, current?.id]);
+
+  // --- Keyboard shortcuts ---
+  const handleClose = () => {
+    audio.current?.pause();
+    clearPlayer();
+  };
+
+  useEffect(() => {
+    if (!current) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if typing in input/textarea or inside the progress slider
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.closest('input[type="range"]')
+      ) {
+        return;
+      }
+
+      const handledKeys = ["Space", "ArrowLeft", "ArrowRight", "Escape"];
+      if (!handledKeys.includes(e.code)) return;
+
+      e.preventDefault();
+
+      switch (e.code) {
+        case "Space":
+          toggle();
+          break;
+        case "ArrowLeft":
+          previous();
+          break;
+        case "ArrowRight":
+          next();
+          break;
+        case "Escape":
+          handleClose();
+          break;
+        default:
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [current, toggle, previous, next, handleClose]);
 
   if (!current) return null;
 
@@ -60,12 +108,6 @@ export function MusicPlayer() {
     } finally {
       setDownloading(false);
     }
-  };
-
-  const handleClose = () => {
-    // Pause audio and clear player state
-    audio.current?.pause();
-    clearPlayer();
   };
 
   return (
@@ -126,7 +168,6 @@ export function MusicPlayer() {
           </IconAction>
         </div>
 
-        {/* Action buttons – Download, Heart, Queue, and Close */}
         <div className="ml-auto flex items-center gap-2">
           <IconAction
             aria-label="Download song"
@@ -152,8 +193,6 @@ export function MusicPlayer() {
           >
             <ListPlus size={19} />
           </IconAction>
-
-          {/* ✅ Close button – always visible */}
           <IconAction
             aria-label="Close player"
             onClick={handleClose}

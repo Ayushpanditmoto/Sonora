@@ -2,31 +2,19 @@
 import { useMemo } from "react";
 import { usePlayer } from "@/store/player";
 import { SongList } from "@/components/song-list";
-import type { Song } from "@/types/music";
 
 interface RecentlyPlayedProps {
-  emptyMessage?: string; // Optional: show this when no songs
+  emptyMessage?: string;
 }
 
 export function RecentlyPlayed({ emptyMessage }: RecentlyPlayedProps) {
+  // 1. All hooks called unconditionally at the top
   const recently = usePlayer((s) => s.recentlyPlayed);
   const clear = usePlayer((s) => s.clearRecentlyPlayed);
 
-  // If no songs and we have an emptyMessage, show it instead of returning null
-  if (!recently || recently.length === 0) {
-    if (emptyMessage) {
-      return (
-        <section className="mt-10">
-          <h2 className="text-2xl font-black">Recently played</h2>
-          <p className="mt-4 text-zinc-400">{emptyMessage}</p>
-        </section>
-      );
-    }
-    return null; // Home page → hide section
-  }
-
-  // Dedupe and sort newest first
+  // 2. Memoize deduped & reversed list (works even if recently is empty)
   const unique = useMemo(() => {
+    if (!recently || recently.length === 0) return [];
     const seen = new Set<string>();
     const deduped = recently.filter((song) => {
       if (seen.has(song.id)) return false;
@@ -35,6 +23,19 @@ export function RecentlyPlayed({ emptyMessage }: RecentlyPlayedProps) {
     });
     return deduped.reverse();
   }, [recently]);
+
+  // 3. Now conditional rendering (after all hooks)
+  if (unique.length === 0) {
+    if (emptyMessage) {
+      return (
+        <section className="mt-10">
+          <h2 className="text-2xl font-black">Recently played</h2>
+          <p className="mt-4 text-zinc-400">{emptyMessage}</p>
+        </section>
+      );
+    }
+    return null;
+  }
 
   const handleClear = () => {
     if (window.confirm("Clear your recently played list?")) {
