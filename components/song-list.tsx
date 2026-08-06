@@ -1,6 +1,6 @@
 "use client";
 import Image from "next/image";
-import Link from "next/link";
+// Link intentionally removed — titles now play the song; use the song page button if needed
 import { Download, Heart, MoreHorizontal, Play } from "lucide-react";
 import { useState } from "react";
 import type { Song } from "@/types/music";
@@ -47,15 +47,20 @@ export function SongList({ songs }: { songs: Song[] }) {
               className="size-11 rounded object-cover"
             />
             <div className="min-w-0 flex-1">
-              <Link
-                href={`/song/${song.id}`}
-                className="block truncate text-sm font-medium hover:underline"
+              <button
+                onClick={() => setCurrent(song, songs)}
+                className="block w-full text-left truncate text-sm font-medium hover:underline"
               >
                 {decodeHtml(song.name)}
-              </Link>
+              </button>
               <p className="truncate text-xs text-zinc-400">
                 {artistNames(song.artists)}
               </p>
+              {typeof song.playCount === "number" ? (
+                <p className="mt-1 text-xs text-zinc-500">
+                  {song.playCount.toLocaleString()} plays
+                </p>
+              ) : null}
             </div>
             <span className="hidden max-w-48 truncate text-sm text-zinc-400 sm:block">
               {song.album?.name ? decodeHtml(song.album.name) : ""}
@@ -81,9 +86,9 @@ export function SongList({ songs }: { songs: Song[] }) {
             >
               <Heart size={17} fill={liked ? "currentColor" : "none"} />
             </button>
-            <span className="w-10 text-right text-xs text-zinc-500">
-              {duration(song.duration)}
-            </span>
+            <div className="flex w-28 flex-col items-end text-xs text-zinc-500">
+              <span className="text-right">{duration(song.duration)}</span>
+            </div>
             <MoreHorizontal className="text-zinc-500" size={18} />
           </div>
         );

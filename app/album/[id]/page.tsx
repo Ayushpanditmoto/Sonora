@@ -4,7 +4,7 @@ import { useAlbum } from "@/hooks/use-music";
 import { DetailHero } from "@/components/detail-hero";
 import { SongList } from "@/components/song-list";
 import { artistNames } from "@/lib/utils";
-import { PageShimmer } from "@/components/loading-shimmer"; // adjust path
+import { PageShimmer, ErrorFallback } from "@/components/loading-shimmer"; // adjust path
 
 export default function AlbumPage({
   params,
@@ -16,7 +16,9 @@ export default function AlbumPage({
 
   if (q.isLoading) return <PageShimmer />; // ✅ no extra wrapper
   if (q.isError || !q.data)
-    return <p className="text-red-300">Album unavailable.</p>;
+    return (
+      <ErrorFallback message="Album unavailable." onRetry={() => q.refetch()} />
+    );
 
   const album = q.data;
   return (

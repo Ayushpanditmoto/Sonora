@@ -4,6 +4,7 @@ import { useArtist } from "@/hooks/use-music";
 import { DetailHero } from "@/components/detail-hero";
 import { SongList } from "@/components/song-list";
 import { Cards } from "@/components/cards";
+import { PageShimmer, ErrorFallback } from "@/components/loading-shimmer";
 export default function ArtistPage({
   params,
 }: {
@@ -11,10 +12,11 @@ export default function ArtistPage({
 }) {
   const { id } = use(params);
   const q = useArtist(id);
-  if (q.isLoading)
-    return <p className="animate-pulse text-zinc-400">Loading artist…</p>;
+  if (q.isLoading) return <PageShimmer />;
   if (q.isError || !q.data)
-    return <p className="text-red-300">Artist unavailable.</p>;
+    return (
+      <ErrorFallback message="Artist unavailable." onRetry={() => q.refetch()} />
+    );
   const artist = q.data;
   const songs = artist.topSongs || artist.songs || [];
   return (

@@ -26,6 +26,7 @@ export interface Song {
   id: string;
   name: string;
   duration: number;
+  playCount?: number;
   language?: string;
   hasLyrics?: boolean;
   album?: Album;

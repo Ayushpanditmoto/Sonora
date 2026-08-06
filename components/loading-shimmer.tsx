@@ -41,3 +41,25 @@ export function CardsShimmer() {
     </div>
   );
 }
+
+export function ErrorFallback({
+  message = "Something went wrong.",
+  onRetry,
+}: {
+  message?: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <div className="rounded-lg bg-white/5 p-6 text-center">
+      <p className="mb-4 text-lg font-semibold text-red-300">{message}</p>
+      {onRetry ? (
+        <button
+          onClick={onRetry}
+          className="rounded bg-brand px-4 py-2 font-bold text-black"
+        >
+          Retry
+        </button>
+      ) : null}
+    </div>
+  );
+}

@@ -4,6 +4,7 @@ import { useSong, useSuggestions } from "@/hooks/use-music";
 import { DetailHero } from "@/components/detail-hero";
 import { SongList } from "@/components/song-list";
 import { artistNames } from "@/lib/utils";
+import { PageShimmer, ErrorFallback } from "@/components/loading-shimmer";
 export default function SongPage({
   params,
 }: {
@@ -12,10 +13,11 @@ export default function SongPage({
   const { id } = use(params);
   const song = useSong(id);
   const related = useSuggestions(id);
-  if (song.isLoading)
-    return <p className="animate-pulse text-zinc-400">Loading track…</p>;
+  if (song.isLoading) return <PageShimmer />;
   if (song.isError || !song.data?.[0])
-    return <p className="text-red-300">Track unavailable.</p>;
+    return (
+      <ErrorFallback message="Track unavailable." onRetry={() => song.refetch()} />
+    );
   const track = song.data[0];
   return (
     <>
@@ -35,11 +37,15 @@ export default function SongPage({
             ))}
           </div>
         ) : related.isError ? (
-          <p className="text-zinc-400">Couldn’t load suggestions.</p>
+          <ErrorFallback message="Couldn’t load suggestions." onRetry={() => related.refetch()} />
         ) : (
-          <SongList
-            songs={(related.data || []).filter((s) => s.id !== id).slice(0, 10)}
-          />
+          (() => {
+            const suggestions = (related.data || []).filter((s) => s.id !== id).slice(0, 10);
+            if (!suggestions.length) {
+              return <p className="text-zinc-400">No similar tracks found.</p>;
+            }
+            return <SongList songs={suggestions} />;
+          })()
         )}
       </section>
     </>
