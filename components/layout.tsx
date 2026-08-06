@@ -8,6 +8,7 @@ import {
   Heart,
   ListMusic,
   LibraryBig,
+  Clock,
   Github,
 } from "lucide-react";
 import { MusicPlayer } from "@/components/music-player";
@@ -16,6 +17,7 @@ import clsx from "clsx";
 const links = [
   { href: "/", label: "Home", icon: House },
   { href: "/search", label: "Search", icon: Search },
+  { href: "/recent", label: "Recent", icon: Clock },
   { href: "/favorites", label: "Library", icon: LibraryBig },
   { href: "/queue", label: "Queue", icon: ListMusic },
 ];

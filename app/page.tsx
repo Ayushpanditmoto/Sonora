@@ -10,6 +10,7 @@ import {
 import { SongList } from "@/components/song-list";
 import { Cards } from "@/components/cards";
 import { CardsShimmer } from "@/components/loading-shimmer";
+import { RecentlyPlayed } from "@/components/recently-played";
 
 export default function Home() {
   const songs = useSongs("Hindi hits");
@@ -43,6 +44,7 @@ export default function Home() {
       </section>
 
       {/* 🆕 Playlists Section */}
+      <RecentlyPlayed />
       <section className="mt-10">
         <h2 className="mb-5 text-2xl font-black">Featured playlists</h2>
         {playlists.isLoading ? (

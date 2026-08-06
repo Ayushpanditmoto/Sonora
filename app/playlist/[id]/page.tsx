@@ -14,7 +14,10 @@ export default function PlaylistPage({
   if (q.isLoading) return <PageShimmer />; // ✅ no extra wrapper
   if (q.isError || !q.data)
     return (
-      <ErrorFallback message="Playlist unavailable." onRetry={() => q.refetch()} />
+      <ErrorFallback
+        message="Playlist unavailable."
+        onRetry={() => q.refetch()}
+      />
     );
   const playlist = q.data;
   return (

@@ -16,7 +16,10 @@ export default function SongPage({
   if (song.isLoading) return <PageShimmer />;
   if (song.isError || !song.data?.[0])
     return (
-      <ErrorFallback message="Track unavailable." onRetry={() => song.refetch()} />
+      <ErrorFallback
+        message="Track unavailable."
+        onRetry={() => song.refetch()}
+      />
     );
   const track = song.data[0];
   return (
@@ -37,10 +40,15 @@ export default function SongPage({
             ))}
           </div>
         ) : related.isError ? (
-          <ErrorFallback message="Couldn’t load suggestions." onRetry={() => related.refetch()} />
+          <ErrorFallback
+            message="Couldn’t load suggestions."
+            onRetry={() => related.refetch()}
+          />
         ) : (
           (() => {
-            const suggestions = (related.data || []).filter((s) => s.id !== id).slice(0, 10);
+            const suggestions = (related.data || [])
+              .filter((s) => s.id !== id)
+              .slice(0, 10);
             if (!suggestions.length) {
               return <p className="text-zinc-400">No similar tracks found.</p>;
             }

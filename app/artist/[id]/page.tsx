@@ -15,7 +15,10 @@ export default function ArtistPage({
   if (q.isLoading) return <PageShimmer />;
   if (q.isError || !q.data)
     return (
-      <ErrorFallback message="Artist unavailable." onRetry={() => q.refetch()} />
+      <ErrorFallback
+        message="Artist unavailable."
+        onRetry={() => q.refetch()}
+      />
     );
   const artist = q.data;
   const songs = artist.topSongs || artist.songs || [];

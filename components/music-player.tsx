@@ -91,7 +91,9 @@ export function MusicPlayer() {
           className="size-12 rounded object-cover"
         />
         <div className="min-w-0 flex-1 md:max-w-xs">
-          <p className="truncate text-sm font-semibold">{decodeHtml(current.name)}</p>
+          <p className="truncate text-sm font-semibold">
+            {decodeHtml(current.name)}
+          </p>
           <p className="truncate text-xs text-zinc-400">
             {artistNames(current.artists)}
           </p>
