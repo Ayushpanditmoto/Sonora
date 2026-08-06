@@ -4,7 +4,7 @@ export default function RecentPage() {
   return (
     <>
       <div className="flex items-center gap-4"></div>
-      <RecentlyPlayed />
+      <RecentlyPlayed emptyMessage="No songs have been played yet. Start listening!" />
     </>
   );
 }

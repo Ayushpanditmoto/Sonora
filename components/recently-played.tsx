@@ -1,25 +1,54 @@
 "use client";
+import { useMemo } from "react";
 import { usePlayer } from "@/store/player";
 import { SongList } from "@/components/song-list";
 import type { Song } from "@/types/music";
-export function RecentlyPlayed() {
+
+interface RecentlyPlayedProps {
+  emptyMessage?: string; // Optional: show this when no songs
+}
+
+export function RecentlyPlayed({ emptyMessage }: RecentlyPlayedProps) {
   const recently = usePlayer((s) => s.recentlyPlayed);
   const clear = usePlayer((s) => s.clearRecentlyPlayed);
-  if (!recently || recently.length === 0) return null;
 
-  // dedupe by id while preserving order
-  const unique = recently.reduce((acc: typeof recently, item) => {
-    if (!acc.find((x) => x.id === item.id)) acc.push(item);
-    return acc;
-  }, [] as Song[]);
+  // If no songs and we have an emptyMessage, show it instead of returning null
+  if (!recently || recently.length === 0) {
+    if (emptyMessage) {
+      return (
+        <section className="mt-10">
+          <h2 className="text-2xl font-black">Recently played</h2>
+          <p className="mt-4 text-zinc-400">{emptyMessage}</p>
+        </section>
+      );
+    }
+    return null; // Home page → hide section
+  }
+
+  // Dedupe and sort newest first
+  const unique = useMemo(() => {
+    const seen = new Set<string>();
+    const deduped = recently.filter((song) => {
+      if (seen.has(song.id)) return false;
+      seen.add(song.id);
+      return true;
+    });
+    return deduped.reverse();
+  }, [recently]);
+
+  const handleClear = () => {
+    if (window.confirm("Clear your recently played list?")) {
+      clear();
+    }
+  };
 
   return (
     <section className="mt-10">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-black">Recently played</h2>
         <button
-          onClick={clear}
-          className="text-sm text-zinc-400 hover:text-white"
+          onClick={handleClear}
+          className="text-sm text-zinc-400 hover:text-white transition-colors"
         >
           Clear
         </button>
