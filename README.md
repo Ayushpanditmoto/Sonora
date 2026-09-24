@@ -1,124 +1,131 @@
 # 🎵 Sonora
 
-Sonora is a modern, Spotify-inspired music streaming web application built with **Next.js**, **TypeScript**, and **Tailwind CSS**. It delivers a sleek, responsive experience with a fully functional music player, queue management, and dynamic content browsing.
+Sonora is an open-source music streaming project with two clients:
+
+- A responsive **Next.js web player** in the repository root.
+- A cross-platform **Flutter mobile player** in [`sonora_flutter/`](./sonora_flutter/).
 
 <p align="center">
-  <img src="./public/screenshot.png" alt="Sonora app screenshot" width="800"/>
+  <img src="./public/screenshot.png" alt="Sonora web app screenshot" width="800"/>
 </p>
 
-> **Note:** Replace `./public/screenshot.png` with the actual path to your screenshot.
+## 📦 Android APK
 
----
+Download the latest universal Android build from GitHub Releases:
+
+**[⬇ Download the latest Sonora APK](https://github.com/Ayushpanditmoto/Sonora/releases/latest)**
+
+The current release is [Sonora v1.0.0](https://github.com/Ayushpanditmoto/Sonora/releases/tag/v1.0.0). APK builds are open-source sideloading releases and use Flutter's automatic debug signing; no private keystore is stored in this repository. Android may ask you to allow installs from unknown sources. If Android reports a signing conflict when installing a newer build, uninstall the previous Sonora version first.
+
+A SHA-256 checksum is published beside every APK:
+
+- [Sonora-1.0.0+1.apk](https://github.com/Ayushpanditmoto/Sonora/releases/download/v1.0.0/Sonora-1.0.0%2B1.apk)
+- [SHA-256 checksum](https://github.com/Ayushpanditmoto/Sonora/releases/download/v1.0.0/Sonora-1.0.0%2B1.apk.sha256)
 
 ## ✨ Features
 
-- 🎧 **Modern UI** – Clean, Spotify-like interface with smooth animations  
-- 📱 **Fully Responsive** – Works flawlessly on desktop, tablet, and mobile  
-- 🎵 **Music Player** – Play, pause, skip, volume control, and progress bar  
-- 📀 **Browse Content** – Explore albums, artists, and curated playlists  
-- 🔍 **Search** – Find songs, albums, or artists instantly  
-- ❤️ **Liked Songs** – Save your favourites to a personal collection  
-- 📃 **Queue Management** – View and reorder your upcoming tracks  
-- ⚡ **Optimized Performance** – Fast navigation and rendering with Next.js  
-- 🌙 **Clean Aesthetic** – Minimalist dark theme with subtle gradients  
+- Browse, search, and play music from the Sonora music API
+- Queue management with previous, next, seek, shuffle, and repeat controls
+- Favorites, listening history, and local downloads
+- Responsive web layout for desktop, tablet, and mobile
+- Persistent mini-player and full-screen now-playing view
+- Background audio, Android media notifications, and lock-screen controls in Flutter
+- Original local album artwork for reliable rendering
 
----
+## 🛠️ Tech stack
 
-## 🛠️ Tech Stack
+| Client | Stack |
+| --- | --- |
+| Web | Next.js, React, TypeScript, Tailwind CSS, Zustand |
+| Mobile | Flutter, Dart, Riverpod, `go_router`, `just_audio`, `audio_service` |
+| Media/data | Sonora/Saavn API integration with Dio |
 
-- **Framework** – [Next.js](https://nextjs.org/) (App Router)  
-- **Language** – [TypeScript](https://www.typescriptlang.org/)  
-- **Styling** – [Tailwind CSS](https://tailwindcss.com/)  
-- **State Management** – [Zustand](https://zustand-demo.pmnd.rs/)  
-- **Icons** – [Lucide React](https://lucide.dev/)  
-- **Animations** – CSS transitions + Framer Motion (optional)  
+## 🚀 Getting started
 
----
+### Web app
 
-## 🚀 Getting Started
+Requirements: Node.js 18 or later and npm.
 
-Follow these steps to run Sonora locally.
-
-### Prerequisites
-
-- Node.js (v18 or later)
-- npm, yarn, or pnpm
-
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/your-username/sonora.git
-   cd sonora
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   # or
-   yarn install
-   # or
-   pnpm install
-   ```
-
-3. **Run the development server**
-   ```bash
-   npm run dev
-   # or
-   yarn dev
-   # or
-   pnpm dev
-   ```
-
-4. **Open your browser**  
-   Visit [http://localhost:3000](http://localhost:3000) to see the app in action.
-
----
-
-## 📁 Project Structure
-
-```
-sonora/
-├── public/
-│   └── screenshot.png      # Your app screenshot
-├── src/
-│   ├── app/                # Next.js App Router pages
-│   ├── components/         # Reusable UI components
-│   ├── hooks/              # Custom React hooks
-│   ├── store/              # Zustand state stores
-│   └── styles/             # Tailwind & global styles
-├── package.json
-├── tailwind.config.js
-├── tsconfig.json
-└── README.md
+```bash
+git clone https://github.com/Ayushpanditmoto/Sonora.git
+cd Sonora
+npm install
+npm run dev
 ```
 
----
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+### Flutter app
+
+Requirements: Flutter 3.47.2 or a compatible stable Flutter SDK.
+
+```bash
+git clone https://github.com/Ayushpanditmoto/Sonora.git
+cd Sonora/sonora_flutter
+flutter pub get
+flutter run
+```
+
+For a browser preview of the Flutter client:
+
+```bash
+flutter run -d web-server --web-port=8082
+```
+
+## ✅ Validation
+
+Run the Flutter checks from the mobile project directory:
+
+```bash
+cd sonora_flutter
+flutter analyze
+flutter test
+```
+
+## 📁 Project structure
+
+```text
+.
+├── app/                    # Next.js App Router pages
+├── components/             # Web UI components
+├── hooks/                  # Web data and player hooks
+├── lib/                    # Web utilities and providers
+├── public/                 # Web assets
+├── services/               # Web API services
+├── store/                  # Web player state
+├── sonora_flutter/         # Flutter mobile application
+│   ├── android/            # Android host project
+│   ├── assets/             # Local album artwork
+│   ├── lib/                # Flutter application code
+│   └── test/               # Flutter unit and widget tests
+├── types/                  # Shared web TypeScript types
+└── .github/workflows/      # Automated GitHub releases
+```
+
+## 📦 Maintainer releases
+
+Android releases are automated by [`.github/workflows/android-release.yml`](./.github/workflows/android-release.yml). To publish a new version:
+
+1. Update `version` in `sonora_flutter/pubspec.yaml` (for example, `1.0.1+2`).
+2. Commit and push the version change.
+3. Create and push the matching tag:
+
+   ```bash
+   git tag v1.0.1
+   git push origin v1.0.1
+   ```
+
+The workflow validates the tag, runs Flutter analysis and tests, builds the universal APK, and attaches the APK and checksum to the GitHub Release.
 
 ## 🤝 Contributing
 
-Contributions are welcome! If you have ideas for improvements or find any issues, please open an issue or submit a pull request.
+Contributions are welcome. Please keep changes focused, run the relevant validation commands, and open an issue or pull request describing your work.
 
-1. Fork the repository  
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)  
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)  
-4. Push to the branch (`git push origin feature/amazing-feature`)  
-5. Open a Pull Request  
+## 🙏 Credits
 
----
+- Sonora music API integration and streaming data
+- [Flutter](https://flutter.dev/) and [Dart](https://dart.dev/)
+- [Next.js](https://nextjs.org/) and [React](https://react.dev/)
+- [Lucide](https://lucide.dev/) for interface icons
 
-## 📄 License
-
-Distributed under the MIT License. See `LICENSE` for more information.
-
----
-
-## 🙌 Acknowledgements
-
-- [Spotify](https://spotify.com) for the design inspiration  
-- [Lucide](https://lucide.dev) for beautiful icons  
-- All open-source libraries that made this project possible  
-
----
-
-**Made with ❤️ by [Ayush Pandit](https://github.com/ayushpanditmoto)**
+Made with ❤️ by [Ayush Pandit](https://github.com/ayushpanditmoto)
