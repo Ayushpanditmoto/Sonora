@@ -15,12 +15,12 @@ Download the latest universal Android build from GitHub Releases:
 
 **[⬇ Download the latest Sonora APK](https://github.com/Ayushpanditmoto/Sonora/releases/latest)**
 
-The current release is [Sonora v1.0.0](https://github.com/Ayushpanditmoto/Sonora/releases/tag/v1.0.0). APK builds are open-source sideloading releases and use Flutter's automatic debug signing; no private keystore is stored in this repository. Android may ask you to allow installs from unknown sources. If Android reports a signing conflict when installing a newer build, uninstall the previous Sonora version first.
+The current release is [Sonora v1.0.1](https://github.com/Ayushpanditmoto/Sonora/releases/tag/v1.0.1). APK builds are open-source sideloading releases and use Flutter's automatic debug signing; no private keystore is stored in this repository. Android may ask you to allow installs from unknown sources. If Android reports a signing conflict when installing a newer build, uninstall the previous Sonora version first.
 
 A SHA-256 checksum is published beside every APK:
 
-- [Sonora-1.0.0+1.apk](https://github.com/Ayushpanditmoto/Sonora/releases/download/v1.0.0/Sonora-1.0.0%2B1.apk)
-- [SHA-256 checksum](https://github.com/Ayushpanditmoto/Sonora/releases/download/v1.0.0/Sonora-1.0.0%2B1.apk.sha256)
+- [Sonora-1.0.1+2.apk](https://github.com/Ayushpanditmoto/Sonora/releases/download/v1.0.1/Sonora-1.0.1%2B2.apk)
+- [SHA-256 checksum](https://github.com/Ayushpanditmoto/Sonora/releases/download/v1.0.1/Sonora-1.0.1%2B2.apk.sha256)
 
 ## ✨ Features
 
