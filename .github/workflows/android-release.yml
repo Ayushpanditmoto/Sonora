@@ -1,0 +1,140 @@
+name: Android APK Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to build (for example, v1.0.0)"
+        required: true
+        default: "v1.0.0"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-apk-release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      FLUTTER_VERSION: "3.47.2"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Validate release version
+        working-directory: sonora_flutter
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          pubspec_version="$(awk '$1 == "version:" { print $2; exit }' pubspec.yaml)"
+          app_version="${pubspec_version%%+*}"
+          expected_tag="v${app_version}"
+
+          if [[ "${RELEASE_TAG}" != "${expected_tag}" ]]; then
+            echo "::error::Tag ${RELEASE_TAG} does not match pubspec version ${expected_tag}."
+            exit 1
+          fi
+
+          if ! git rev-parse --verify --quiet "refs/tags/${RELEASE_TAG}" >/dev/null; then
+            echo "::error::Tag ${RELEASE_TAG} does not exist. Create and push it before dispatching manually."
+            exit 1
+          fi
+
+          echo "Validated ${RELEASE_TAG} against Sonora ${pubspec_version}."
+
+      - name: Install dependencies
+        working-directory: sonora_flutter
+        run: flutter pub get
+
+      - name: Analyze Flutter app
+        working-directory: sonora_flutter
+        run: flutter analyze
+
+      - name: Test Flutter app
+        working-directory: sonora_flutter
+        run: flutter test
+
+      - name: Build universal release APK
+        working-directory: sonora_flutter
+        run: flutter build apk --release --no-pub
+
+      - name: Package APK and checksum
+        working-directory: sonora_flutter
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          built_apk="build/app/outputs/flutter-apk/app-release.apk"
+          if [[ ! -f "${built_apk}" ]]; then
+            echo "::error::Flutter did not produce ${built_apk}."
+            exit 1
+          fi
+
+          pubspec_version="$(awk '$1 == "version:" { print $2; exit }' pubspec.yaml)"
+          apk_name="Sonora-${pubspec_version}.apk"
+          mkdir -p ../release
+          cp "${built_apk}" "../release/${apk_name}"
+          (
+            cd ../release
+            sha256sum "${apk_name}" > "${apk_name}.sha256"
+          )
+
+      - name: Upload Actions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonora-android-${{ env.RELEASE_TAG }}
+          path: release/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          mapfile -t release_assets < <(find release -maxdepth 1 -type f -print | sort)
+          if (( ${#release_assets[@]} == 0 )); then
+            echo "::error::No release assets were generated."
+            exit 1
+          fi
+
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" "${release_assets[@]}" --clobber
+          else
+            gh release create "${RELEASE_TAG}" "${release_assets[@]}" \
+              --verify-tag \
+              --title "Sonora ${RELEASE_TAG}" \
+              --generate-notes \
+              --latest
+          fi
