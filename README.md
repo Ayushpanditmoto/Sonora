@@ -8,27 +8,6 @@ Sonora is a modern, Spotify-inspired music streaming web application built with 
 
 > **Note:** Replace `./public/screenshot.png` with the actual path to your screenshot.
 
-## 📦 Android APK
-
-Prebuilt universal Android APKs are published with each tagged GitHub release.
-
-**[Download the latest Sonora APK](https://github.com/Ayushpanditmoto/Sonora/releases/latest)**
-
-These open-source sideloading builds use Flutter's automatic debug signing and require no private keystore. Android may ask you to allow installs from unknown sources. Because CI signing identities can change between builds, Android may require you to uninstall an older Sonora version before installing a newer one.
-
-### Maintainer release steps
-
-1. Set the app version in `sonora_flutter/pubspec.yaml` (for example, `1.0.1+2`).
-2. Commit and push the version change.
-3. Create and push the matching version tag:
-
-   ```bash
-   git tag v1.0.1
-   git push origin v1.0.1
-   ```
-
-4. GitHub Actions validates the tag, analyzes and tests the Flutter app, builds the release APK, and attaches the APK plus a SHA-256 checksum to the GitHub Release.
-
 ---
 
 ## ✨ Features
