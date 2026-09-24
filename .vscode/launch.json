@@ -1,0 +1,14 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Sonora - V2561 (Android)",
+      "type": "dart",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/sonora_flutter",
+      "program": "lib/main.dart",
+      "deviceId": "10BG1D175R000SK",
+      "flutterMode": "debug"
+    }
+  ]
+}
