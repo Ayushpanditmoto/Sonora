@@ -38,6 +38,23 @@ final searchResultsProvider = FutureProvider.family<List<MediaItem>, String>(
       ref.watch(musicRepositoryProvider).searchSongs(query, limit: 20),
 );
 
+typedef CollectionSearchKey = ({String query, CollectionKind kind});
+
+final searchCollectionsProvider =
+    FutureProvider.family<List<MusicCollection>, CollectionSearchKey>((
+      ref,
+      key,
+    ) {
+      final path = switch (key.kind) {
+        CollectionKind.album => '/search/albums',
+        CollectionKind.artist => '/search/artists',
+        CollectionKind.playlist => '/search/playlists',
+      };
+      return ref
+          .watch(musicRepositoryProvider)
+          .searchCollections(path, key.query, key.kind, limit: 20);
+    });
+
 /// Identifies a collection to fetch songs for. A record gives it value
 /// equality, which Riverpod families require.
 typedef CollectionKey = ({String id, CollectionKind kind});

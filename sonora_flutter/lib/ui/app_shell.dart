@@ -14,8 +14,6 @@ import '../services/music_api.dart';
 import 'shimmer.dart';
 import 'sonora_theme.dart';
 
-const moodNames = ['Focus', 'Night drive', 'Fresh finds', 'Unwind'];
-
 /// The greeting shown on the home top bar.
 String greetingFor(DateTime time) {
   if (time.hour < 12) return 'Good morning';
@@ -1571,13 +1569,117 @@ class _SearchViewState extends ConsumerState<SearchView> {
     );
   }
 
+  void _openCollection(MusicCollection collection) {
+    unawaited(
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => _CollectionView(collection: collection),
+        ),
+      ),
+    );
+  }
+
+  Widget _songResults(AsyncValue<List<MediaItem>> request) {
+    if (request.isLoading) return const _SearchSkeletonSection();
+    if (request.hasError) {
+      return _SearchErrorSection(
+        title: 'Songs',
+        onRetry: () => ref.invalidate(searchResultsProvider(query)),
+      );
+    }
+    final tracks = request.value ?? const <MediaItem>[];
+    if (tracks.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionHeader(title: 'Songs'),
+        const SizedBox(height: 8),
+        ...tracks.map((track) => TrackTile(track: track, queue: tracks)),
+        const SizedBox(height: 28),
+      ],
+    );
+  }
+
+  Widget _collectionResults(
+    String title,
+    CollectionKind kind,
+    AsyncValue<List<MusicCollection>> request, {
+    bool circular = false,
+  }) {
+    if (request.isLoading) {
+      return const _SearchSkeletonSection(collection: true);
+    }
+    if (request.hasError) {
+      return _SearchErrorSection(
+        title: title,
+        onRetry: () => ref.invalidate(
+          searchCollectionsProvider((query: query, kind: kind)),
+        ),
+      );
+    }
+    final items = request.value ?? const <MusicCollection>[];
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader(title: title),
+        const SizedBox(height: 10),
+        _CollectionGrid(
+          items: items,
+          circular: circular,
+          onSelect: _openCollection,
+        ),
+        const SizedBox(height: 28),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final popular = ref.watch(catalogProvider).value ?? const <MediaItem>[];
-    final search = query.isEmpty
-        ? null
-        : ref.watch(searchResultsProvider(query));
-    final results = search?.value ?? const <MediaItem>[];
+    final hasQuery = query.isNotEmpty;
+    final songs = hasQuery ? ref.watch(searchResultsProvider(query)) : null;
+    final albums = hasQuery
+        ? ref.watch(
+            searchCollectionsProvider((
+              query: query,
+              kind: CollectionKind.album,
+            )),
+          )
+        : null;
+    final artists = hasQuery
+        ? ref.watch(
+            searchCollectionsProvider((
+              query: query,
+              kind: CollectionKind.artist,
+            )),
+          )
+        : null;
+    final playlists = hasQuery
+        ? ref.watch(
+            searchCollectionsProvider((
+              query: query,
+              kind: CollectionKind.playlist,
+            )),
+          )
+        : null;
+    final hasErrors =
+        songs?.hasError == true ||
+        albums?.hasError == true ||
+        artists?.hasError == true ||
+        playlists?.hasError == true;
+    final allSettled =
+        hasQuery &&
+        songs?.isLoading == false &&
+        albums?.isLoading == false &&
+        artists?.isLoading == false &&
+        playlists?.isLoading == false &&
+        !hasErrors;
+    final hasResults =
+        (songs?.value?.isNotEmpty ?? false) ||
+        (albums?.value?.isNotEmpty ?? false) ||
+        (artists?.value?.isNotEmpty ?? false) ||
+        (playlists?.value?.isNotEmpty ?? false);
+
     return PageFrame(
       child: CustomScrollView(
         key: const PageStorageKey('search'),
@@ -1587,63 +1689,37 @@ class _SearchViewState extends ConsumerState<SearchView> {
             sliver: SliverList.list(
               children: [
                 Text(
-                  'Find your sound',
+                  'Search Sonora',
                   style: Theme.of(context).textTheme.displaySmall,
                 ),
                 const SizedBox(height: 20),
                 TextField(
+                  textInputAction: TextInputAction.search,
                   onChanged: _search,
                   decoration: const InputDecoration(
-                    hintText: 'Songs, artists, albums',
+                    hintText: 'Songs, albums, artists, playlists',
                     prefixIcon: Icon(Icons.search_rounded),
-                    suffixIcon: Icon(Icons.tune_rounded),
                   ),
                 ),
                 const SizedBox(height: 28),
-                if (query.isEmpty) ...[
-                  const _SectionHeader(title: 'Browse moods'),
-                  const SizedBox(height: 14),
-                  const _MoodGrid(),
-                  const SizedBox(height: 30),
-                  const _SectionHeader(title: 'Popular searches'),
-                  const SizedBox(height: 8),
-                  ...popular
-                      .take(5)
-                      .map((track) => TrackTile(track: track, queue: popular)),
-                ] else ...[
-                  if (search?.isLoading == true)
-                    const SkeletonTrackList()
-                  else if (search?.hasError == true)
-                    _InlineRetry(
-                      message:
-                          'Search failed. Check your connection and try again.',
-                      onRetry: () =>
-                          ref.invalidate(searchResultsProvider(query)),
-                    )
-                  else ...[
-                    Text(
-                      '${results.length} results',
-                      style: const TextStyle(
-                        color: SonoraColors.muted,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    if (results.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 64),
-                        child: Center(
-                          child: Text(
-                            'No music found. Try another mood.',
-                            style: TextStyle(color: SonoraColors.muted),
-                          ),
-                        ),
-                      )
-                    else
-                      ...results.map(
-                        (track) => TrackTile(track: track, queue: results),
-                      ),
-                  ],
+                if (!hasQuery)
+                  const _SearchPrompt()
+                else if (allSettled && !hasResults)
+                  const _NoSearchResults()
+                else ...[
+                  _songResults(songs!),
+                  _collectionResults('Albums', CollectionKind.album, albums!),
+                  _collectionResults(
+                    'Artists',
+                    CollectionKind.artist,
+                    artists!,
+                    circular: true,
+                  ),
+                  _collectionResults(
+                    'Playlists',
+                    CollectionKind.playlist,
+                    playlists!,
+                  ),
                 ],
               ],
             ),
@@ -1654,58 +1730,86 @@ class _SearchViewState extends ConsumerState<SearchView> {
   }
 }
 
-class _MoodGrid extends StatelessWidget {
-  const _MoodGrid();
-
-  static const colors = [
-    SonoraColors.green,
-    SonoraColors.coral,
-    SonoraColors.lilac,
-    Color(0xFFFFD66B),
-  ];
+class _SearchPrompt extends StatelessWidget {
+  const _SearchPrompt();
 
   @override
   Widget build(BuildContext context) {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisExtent: 86,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 72),
+      child: Column(
+        children: [
+          const Icon(Icons.search_rounded, size: 40, color: SonoraColors.muted),
+          const SizedBox(height: 14),
+          const Text(
+            'Search for songs, albums, artists, and playlists',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: SonoraColors.muted),
+          ),
+        ],
       ),
-      itemCount: moodNames.length,
-      itemBuilder: (context, index) => Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: colors[index].withValues(alpha: 0.18),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: colors[index].withValues(alpha: 0.32)),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                moodNames[index],
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-            Icon(
-              [
-                Icons.center_focus_strong_rounded,
-                Icons.nightlight_round,
-                Icons.auto_awesome_rounded,
-                Icons.spa_outlined,
-              ][index],
-              color: colors[index],
-            ),
-          ],
+    );
+  }
+}
+
+class _NoSearchResults extends StatelessWidget {
+  const _NoSearchResults();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 72),
+      child: Center(
+        child: Text(
+          'No music found. Try a different search.',
+          style: TextStyle(color: SonoraColors.muted),
         ),
       ),
+    );
+  }
+}
+
+class _SearchSkeletonSection extends StatelessWidget {
+  const _SearchSkeletonSection({this.collection = false});
+
+  final bool collection;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SkeletonBox(width: 110, height: 20),
+        const SizedBox(height: 12),
+        if (collection)
+          const SkeletonCollectionRail()
+        else
+          const SkeletonTrackList(count: 4),
+        const SizedBox(height: 28),
+      ],
+    );
+  }
+}
+
+class _SearchErrorSection extends StatelessWidget {
+  const _SearchErrorSection({required this.title, required this.onRetry});
+
+  final String title;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader(title: title),
+        _InlineRetry(
+          message:
+              'Could not load $title. Check your connection and try again.',
+          onRetry: onRetry,
+        ),
+        const SizedBox(height: 20),
+      ],
     );
   }
 }
