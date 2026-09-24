@@ -204,7 +204,7 @@ void main() {
     expect(find.byTooltip('Remove download'), findsNWidgets(2));
   });
 
-  testWidgets('a batch and the library card report active download state', (
+  testWidgets('a batch and the library downloads tab report active state', (
     tester,
   ) async {
     useTestViewport(tester);
@@ -261,9 +261,9 @@ void main() {
     expect(batchButton.onPressed, isNull);
 
     await tester.tap(find.byTooltip('Back'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.text('Library'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.scrollUntilVisible(
       find.text('Downloads'),
       200,
@@ -280,7 +280,7 @@ void main() {
     expect(find.textContaining('2 tracks'), findsWidgets);
   });
 
-  testWidgets('the downloads page lists what is on the device', (tester) async {
+  testWidgets('the downloads tab lists what is on the device', (tester) async {
     useTestViewport(tester);
     SharedPreferences.setMockInitialValues({});
     final dir = Directory.systemTemp.createTempSync('sonora_downloads_page');
@@ -327,7 +327,7 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
 
-    // The library card reports what is there.
+    // The downloads tab reports what is there.
     expect(find.text('Downloads'), findsOneWidget);
     expect(find.textContaining('1 track'), findsWidgets);
 

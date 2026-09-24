@@ -1871,132 +1871,286 @@ class _SearchErrorSection extends StatelessWidget {
   }
 }
 
-class LibraryView extends ConsumerWidget {
+class LibraryView extends ConsumerStatefulWidget {
   const LibraryView({super.key});
+
+  @override
+  ConsumerState<LibraryView> createState() => _LibraryViewState();
+}
+
+class _LibraryViewState extends ConsumerState<LibraryView> {
+  int _tab = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 3,
+      child: PageFrame(
+        child: CustomScrollView(
+          key: const PageStorageKey('library'),
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 22, 20, 28),
+              sliver: SliverList.list(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Your library',
+                          style: Theme.of(context).textTheme.displaySmall,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () {},
+                        tooltip: 'Add playlist',
+                        icon: const Icon(Icons.add_rounded),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 22),
+                  _LibraryTabs(
+                    onSelected: (index) => setState(() => _tab = index),
+                  ),
+                  const SizedBox(height: 18),
+                  switch (_tab) {
+                    0 => const _DownloadsTab(),
+                    1 => const _RecentlyPlayedTab(),
+                    _ => const _LikedSongsTab(),
+                  },
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LibraryTabs extends StatelessWidget {
+  const _LibraryTabs({required this.onSelected});
+
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return TabBar(
+      isScrollable: true,
+      tabAlignment: TabAlignment.start,
+      onTap: onSelected,
+      tabs: const [
+        Tab(text: 'Downloads'),
+        Tab(text: 'Recently played'),
+        Tab(text: 'Liked songs'),
+      ],
+    );
+  }
+}
+
+class _DownloadsTab extends ConsumerWidget {
+  const _DownloadsTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final store = ref.watch(downloadStoreProvider);
+    return ListenableBuilder(
+      listenable: store,
+      builder: (context, _) {
+        final tracks = store.tracks;
+        if (tracks.isEmpty && store.activeDownloadCount == 0) {
+          return const _LibraryEmpty(
+            icon: Icons.download_rounded,
+            message:
+                'Tap the download icon on a track to keep it on this device.',
+          );
+        }
+        if (tracks.isEmpty) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${_plural(store.activeDownloadCount, 'download')} • ${_formatSize(store.activeBytes)} received',
+                style: const TextStyle(
+                  color: SonoraColors.green,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const LinearProgressIndicator(),
+            ],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${_plural(tracks.length, 'track')} • ${_formatSize(store.totalBytes)}',
+                    style: const TextStyle(color: SonoraColors.muted),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () =>
+                      unawaited(_confirmDownloadClear(context, store)),
+                  icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                  label: const Text('Clear'),
+                ),
+              ],
+            ),
+            if (store.activeDownloadCount > 0) ...[
+              const SizedBox(height: 4),
+              Text(
+                '${_plural(store.activeDownloadCount, 'download')} • ${_formatSize(store.activeBytes)} received',
+                style: const TextStyle(
+                  color: SonoraColors.green,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 10),
+            FilledButton.icon(
+              onPressed: () =>
+                  playAndRemember(ref, tracks.first, queue: tracks),
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: const Text('Play all'),
+            ),
+            const SizedBox(height: 12),
+            ...tracks.map(
+              (track) => _SwipeToRemove(
+                key: ValueKey(track.id),
+                onRemove: () => store.remove(track.id),
+                child: TrackTile(track: track, queue: tracks),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _RecentlyPlayedTab extends ConsumerWidget {
+  const _RecentlyPlayedTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final store = ref.watch(recentStoreProvider);
+    return ListenableBuilder(
+      listenable: store,
+      builder: (context, _) {
+        final tracks = store.tracks;
+        if (tracks.isEmpty) {
+          return const _LibraryEmpty(
+            icon: Icons.history_rounded,
+            message: 'Songs you play will show up here.',
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${_plural(tracks.length, 'track')} played',
+                    style: const TextStyle(color: SonoraColors.muted),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () =>
+                      unawaited(_confirmHistoryClear(context, store)),
+                  icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                  label: const Text('Clear'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            FilledButton.icon(
+              onPressed: () =>
+                  playAndRemember(ref, tracks.first, queue: tracks),
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: const Text('Play history'),
+            ),
+            const SizedBox(height: 12),
+            ...tracks.map(
+              (track) => _SwipeToRemove(
+                key: ValueKey(track.id),
+                onRemove: () => store.remove(track.id),
+                child: TrackTile(track: track, queue: tracks),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _LikedSongsTab extends ConsumerWidget {
+  const _LikedSongsTab();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final store = ref.watch(favoriteStoreProvider);
-    final recents = ref.watch(recentStoreProvider);
-
-    return PageFrame(
-      child: ListenableBuilder(
-        listenable: store,
-        builder: (context, _) {
-          // Straight from the store rather than filtered out of the home
-          // catalogue, so a song saved from search, an album or a playlist is
-          // still listed here.
-          final liked = store.tracks;
-          return CustomScrollView(
-            key: const PageStorageKey('library'),
-            slivers: [
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 22, 20, 28),
-                sliver: SliverList.list(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'Your library',
-                            style: Theme.of(context).textTheme.displaySmall,
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: () {},
-                          tooltip: 'Add playlist',
-                          icon: const Icon(Icons.add_rounded),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 22),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: SonoraColors.surface,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 64,
-                            height: 64,
-                            decoration: BoxDecoration(
-                              color: SonoraColors.lilac,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Icon(
-                              Icons.favorite_rounded,
-                              color: Colors.black,
-                              size: 30,
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Liked songs',
-                                  style: TextStyle(
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                const SizedBox(height: 5),
-                                Text(
-                                  '${liked.length} tracks',
-                                  style: const TextStyle(
-                                    color: SonoraColors.muted,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: liked.isEmpty
-                                ? null
-                                : () => playAndRemember(
-                                    ref,
-                                    liked.first,
-                                    queue: liked,
-                                  ),
-                            icon: const Icon(
-                              Icons.play_circle_fill_rounded,
-                              size: 38,
-                              color: SonoraColors.green,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    _HistoryCard(store: recents),
-                    const SizedBox(height: 14),
-                    const _DownloadsCard(),
-                    const SizedBox(height: 30),
-                    const _SectionHeader(title: 'Saved tracks'),
-                    const SizedBox(height: 8),
-                    if (liked.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 48),
-                        child: Center(
-                          child: Text(
-                            'Tap the heart on a track to save it.',
-                            style: TextStyle(color: SonoraColors.muted),
-                          ),
-                        ),
-                      )
-                    else
-                      ...liked.map(
-                        (track) => TrackTile(track: track, queue: liked),
-                      ),
-                  ],
-                ),
-              ),
-            ],
+    return ListenableBuilder(
+      listenable: store,
+      builder: (context, _) {
+        final tracks = store.tracks;
+        if (tracks.isEmpty) {
+          return const _LibraryEmpty(
+            icon: Icons.favorite_border_rounded,
+            message: 'Tap the heart on a track to save it.',
           );
-        },
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${_plural(tracks.length, 'track')} saved',
+              style: const TextStyle(color: SonoraColors.muted),
+            ),
+            const SizedBox(height: 10),
+            FilledButton.icon(
+              onPressed: () =>
+                  playAndRemember(ref, tracks.first, queue: tracks),
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: const Text('Play liked songs'),
+            ),
+            const SizedBox(height: 12),
+            ...tracks.map((track) => TrackTile(track: track, queue: tracks)),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _LibraryEmpty extends StatelessWidget {
+  const _LibraryEmpty({required this.icon, required this.message});
+
+  final IconData icon;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 64),
+      child: Column(
+        children: [
+          Icon(icon, size: 40, color: SonoraColors.muted),
+          const SizedBox(height: 14),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: SonoraColors.muted),
+          ),
+        ],
       ),
     );
   }
@@ -2033,6 +2187,59 @@ class _SwipeToRemove extends StatelessWidget {
       child: child,
     );
   }
+}
+
+Future<void> _confirmDownloadClear(
+  BuildContext context,
+  DownloadStore store,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Remove all downloads?'),
+      content: const Text(
+        'The audio is deleted from this device. You can download it again '
+        'when you have a connection.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Remove all'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed ?? false) await store.clear();
+}
+
+Future<void> _confirmHistoryClear(
+  BuildContext context,
+  RecentStore store,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Clear history?'),
+      content: const Text(
+        'This removes every recently played track from this device.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Clear'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed ?? false) store.clear();
 }
 
 /// The tracks kept on the device, which play without a connection.
@@ -2195,93 +2402,6 @@ class _DownloadsView extends ConsumerWidget {
   }
 }
 
-/// A library shortcut to the tracks kept on the device.
-class _DownloadsCard extends ConsumerWidget {
-  const _DownloadsCard();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final store = ref.watch(downloadStoreProvider);
-    return ListenableBuilder(
-      listenable: store,
-      builder: (context, _) {
-        final tracks = store.tracks;
-        return InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: () => showDownloads(context),
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: SonoraColors.surface,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: SonoraColors.green,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Icon(
-                    Icons.download_rounded,
-                    color: Colors.black,
-                    size: 30,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Downloads',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        tracks.isEmpty
-                            ? 'Keep songs on this device'
-                            : '${_plural(tracks.length, 'track')} • ${_formatSize(store.totalBytes)}',
-                        style: const TextStyle(color: SonoraColors.muted),
-                      ),
-                      if (store.activeDownloadCount > 0) ...[
-                        const SizedBox(height: 3),
-                        Text(
-                          '${_plural(store.activeDownloadCount, 'download')} • ${_formatSize(store.activeBytes)} received',
-                          style: const TextStyle(
-                            color: SonoraColors.green,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                IconButton(
-                  onPressed: tracks.isEmpty
-                      ? null
-                      : () => playAndRemember(ref, tracks.first, queue: tracks),
-                  icon: const Icon(
-                    Icons.play_circle_fill_rounded,
-                    size: 38,
-                    color: SonoraColors.green,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
 /// Bytes in a form worth reading: downloads are usually megabytes, and the
 /// exact count matters less than which unit it is in.
 String _formatSize(int bytes) {
@@ -2293,83 +2413,6 @@ String _formatSize(int bytes) {
 void showDownloads(BuildContext context) {
   Navigator.of(context)
       .push(MaterialPageRoute<void>(builder: (_) => const _DownloadsView()));
-}
-
-/// A library shortcut to the full play history.
-class _HistoryCard extends ConsumerWidget {
-  const _HistoryCard({required this.store});
-
-  final RecentStore store;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return ListenableBuilder(
-      listenable: store,
-      builder: (context, _) {
-        final tracks = store.tracks;
-        return InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: () => showHistory(context),
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: SonoraColors.surface,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: SonoraColors.green,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Icon(
-                    Icons.history_rounded,
-                    color: Colors.black,
-                    size: 30,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Recently played',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        tracks.isEmpty
-                            ? 'Nothing played yet'
-                            : _plural(tracks.length, 'track'),
-                        style: const TextStyle(color: SonoraColors.muted),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  onPressed: tracks.isEmpty
-                      ? null
-                      : () => playAndRemember(ref, tracks.first, queue: tracks),
-                  icon: const Icon(
-                    Icons.play_circle_fill_rounded,
-                    size: 38,
-                    color: SonoraColors.green,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
 }
 
 class TrackTile extends ConsumerWidget {

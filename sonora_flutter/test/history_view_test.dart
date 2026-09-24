@@ -76,14 +76,17 @@ void main() {
     expect(handler.queue.value.map((track) => track.id), ['c2', 'c1']);
     expect(handler.mediaItem.value?.id, 'c2');
 
-    // The library card leads to the same page.
+    // The Library tab shows the full history directly.
     await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.library_music_outlined));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Recently played'));
+    await tester.tap(find.widgetWithText(Tab, 'Recently played'));
     await tester.pumpAndSettle();
-    expect(find.text('History'), findsOneWidget);
+    expect(find.text('Play history'), findsOneWidget);
+    expect(find.text('2 tracks played'), findsOneWidget);
+    expect(find.text('Catalog song 1'), findsOneWidget);
+    expect(find.text('Catalog song 2'), findsNWidgets(2));
 
     // Swiping one row away drops just that song from the history.
     await tester.drag(
