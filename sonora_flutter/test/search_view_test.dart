@@ -34,21 +34,26 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
 
-    expect(find.text('Songs'), findsOneWidget);
-    expect(find.text('Albums'), findsOneWidget);
-    expect(find.text('Artists'), findsOneWidget);
+    expect(find.widgetWithText(Tab, 'Songs'), findsOneWidget);
+    expect(find.widgetWithText(Tab, 'Albums'), findsOneWidget);
+    expect(find.widgetWithText(Tab, 'Artists'), findsOneWidget);
+    expect(find.widgetWithText(Tab, 'Playlists'), findsOneWidget);
     expect(find.text('Search Song'), findsOneWidget);
+    expect(find.text('Search Album'), findsNothing);
+
+    await tester.tap(find.widgetWithText(Tab, 'Albums'));
+    await tester.pumpAndSettle();
     expect(find.text('Search Album'), findsOneWidget);
+    expect(find.text('Search Song'), findsNothing);
+
+    await tester.tap(find.widgetWithText(Tab, 'Artists'));
+    await tester.pumpAndSettle();
     expect(find.text('Search Artist'), findsOneWidget);
 
-    await tester.scrollUntilVisible(
-      find.text('Playlists'),
-      400,
-      scrollable: find.byType(Scrollable).first,
-    );
+    await tester.tap(find.widgetWithText(Tab, 'Playlists'));
     await tester.pumpAndSettle();
-    expect(find.text('Playlists'), findsOneWidget);
     expect(find.text('Search Playlist'), findsOneWidget);
+    expect(find.text('Search Artist'), findsNothing);
   });
 }
 

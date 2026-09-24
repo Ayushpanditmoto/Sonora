@@ -1549,6 +1549,7 @@ class SearchView extends ConsumerStatefulWidget {
 class _SearchViewState extends ConsumerState<SearchView> {
   String query = '';
   Timer? _debounce;
+  int _resultTab = 0;
 
   @override
   void dispose() {
@@ -1588,7 +1589,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
       );
     }
     final tracks = request.value ?? const <MediaItem>[];
-    if (tracks.isEmpty) return const SizedBox.shrink();
+    if (tracks.isEmpty) return const _SearchCategoryEmpty(title: 'Songs');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1618,7 +1619,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
       );
     }
     final items = request.value ?? const <MusicCollection>[];
-    if (items.isEmpty) return const SizedBox.shrink();
+    if (items.isEmpty) return _SearchCategoryEmpty(title: title);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1632,6 +1633,26 @@ class _SearchViewState extends ConsumerState<SearchView> {
         const SizedBox(height: 28),
       ],
     );
+  }
+
+  Widget _selectedResults(
+    AsyncValue<List<MediaItem>> songs,
+    AsyncValue<List<MusicCollection>> albums,
+    AsyncValue<List<MusicCollection>> artists,
+    AsyncValue<List<MusicCollection>> playlists,
+  ) {
+    return switch (_resultTab) {
+      0 => _songResults(songs),
+      1 => _collectionResults('Albums', CollectionKind.album, albums),
+      2 => _collectionResults(
+        'Artists',
+        CollectionKind.artist,
+        artists,
+        circular: true,
+      ),
+      3 => _collectionResults('Playlists', CollectionKind.playlist, playlists),
+      _ => _songResults(songs),
+    };
   }
 
   @override
@@ -1680,51 +1701,47 @@ class _SearchViewState extends ConsumerState<SearchView> {
         (artists?.value?.isNotEmpty ?? false) ||
         (playlists?.value?.isNotEmpty ?? false);
 
-    return PageFrame(
-      child: CustomScrollView(
-        key: const PageStorageKey('search'),
-        slivers: [
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 22, 20, 28),
-            sliver: SliverList.list(
-              children: [
-                Text(
-                  'Search Sonora',
-                  style: Theme.of(context).textTheme.displaySmall,
-                ),
-                const SizedBox(height: 20),
-                TextField(
-                  textInputAction: TextInputAction.search,
-                  onChanged: _search,
-                  decoration: const InputDecoration(
-                    hintText: 'Songs, albums, artists, playlists',
-                    prefixIcon: Icon(Icons.search_rounded),
+    return DefaultTabController(
+      length: 4,
+      child: PageFrame(
+        child: CustomScrollView(
+          key: const PageStorageKey('search'),
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 22, 20, 28),
+              sliver: SliverList.list(
+                children: [
+                  Text(
+                    'Search Sonora',
+                    style: Theme.of(context).textTheme.displaySmall,
                   ),
-                ),
-                const SizedBox(height: 28),
-                if (!hasQuery)
-                  const _SearchPrompt()
-                else if (allSettled && !hasResults)
-                  const _NoSearchResults()
-                else ...[
-                  _songResults(songs!),
-                  _collectionResults('Albums', CollectionKind.album, albums!),
-                  _collectionResults(
-                    'Artists',
-                    CollectionKind.artist,
-                    artists!,
-                    circular: true,
+                  const SizedBox(height: 20),
+                  TextField(
+                    textInputAction: TextInputAction.search,
+                    onChanged: _search,
+                    decoration: const InputDecoration(
+                      hintText: 'Songs, albums, artists, playlists',
+                      prefixIcon: Icon(Icons.search_rounded),
+                    ),
                   ),
-                  _collectionResults(
-                    'Playlists',
-                    CollectionKind.playlist,
-                    playlists!,
-                  ),
+                  const SizedBox(height: 28),
+                  if (!hasQuery)
+                    const _SearchPrompt()
+                  else ...[
+                    _SearchTabs(
+                      onSelected: (index) => setState(() => _resultTab = index),
+                    ),
+                    const SizedBox(height: 16),
+                    if (allSettled && !hasResults)
+                      const _NoSearchResults()
+                    else
+                      _selectedResults(songs!, albums!, artists!, playlists!),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1763,6 +1780,46 @@ class _NoSearchResults extends StatelessWidget {
         child: Text(
           'No music found. Try a different search.',
           style: TextStyle(color: SonoraColors.muted),
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchTabs extends StatelessWidget {
+  const _SearchTabs({required this.onSelected});
+
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return TabBar(
+      isScrollable: true,
+      tabAlignment: TabAlignment.start,
+      onTap: onSelected,
+      tabs: const [
+        Tab(text: 'Songs'),
+        Tab(text: 'Albums'),
+        Tab(text: 'Artists'),
+        Tab(text: 'Playlists'),
+      ],
+    );
+  }
+}
+
+class _SearchCategoryEmpty extends StatelessWidget {
+  const _SearchCategoryEmpty({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 56),
+      child: Center(
+        child: Text(
+          'No ${title.toLowerCase()} found for this search.',
+          style: const TextStyle(color: SonoraColors.muted),
         ),
       ),
     );
