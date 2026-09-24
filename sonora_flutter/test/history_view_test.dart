@@ -39,9 +39,18 @@ void main() {
     expect(find.text('Recently played'), findsNothing);
 
     // Home lists the tracks in both the "Made for you" grid and the rail.
-    await tester.tap(find.text('Catalog song 1').first);
+    // Target the row itself because the random hero can show the same title.
+    await tester.tap(
+      find.byWidgetPredicate(
+        (widget) => widget is TrackTile && widget.track.id == 'c1',
+      ),
+    );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Catalog song 2').first);
+    await tester.tap(
+      find.byWidgetPredicate(
+        (widget) => widget is TrackTile && widget.track.id == 'c2',
+      ),
+    );
     await tester.pumpAndSettle();
 
     // Home shows the latest play, newest first.

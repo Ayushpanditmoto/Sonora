@@ -45,6 +45,31 @@ void main() {
     }
   });
 
+  testWidgets('home hero shows a random catalog track and can shuffle', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    useTestViewport(tester);
+
+    await tester.pumpWidget(_app());
+    await tester.pumpAndSettle();
+
+    final initialTitle = tester
+        .widget<Text>(find.byKey(const ValueKey('hero-track-title')))
+        .data;
+    expect(_songs.map((track) => track.title), contains(initialTitle));
+    expect(find.text('RANDOM PICK'), findsOneWidget);
+    expect(find.byTooltip('Shuffle song'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Shuffle song'));
+    await tester.pump();
+
+    final shuffledTitle = tester
+        .widget<Text>(find.byKey(const ValueKey('hero-track-title')))
+        .data;
+    expect(shuffledTitle, isNot(initialTitle));
+  });
+
   testWidgets('tapping a track queues the list it belongs to, so Next works', (
     tester,
   ) async {
@@ -70,7 +95,14 @@ void main() {
 
     // Home's "Made for you" rail: the tapped track starts a queue of the whole
     // list, not a queue of one, so Next has somewhere to go.
-    await tester.tap(find.text('Song 1').first);
+    await tester.tap(
+      find.descendant(
+        of: find.byType(HomeView),
+        matching: find.byWidgetPredicate(
+          (widget) => widget is TrackTile && widget.track.id == 'song-1',
+        ),
+      ),
+    );
     player.finishLoad();
     await tester.pumpAndSettle();
 

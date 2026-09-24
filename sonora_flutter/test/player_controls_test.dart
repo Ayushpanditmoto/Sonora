@@ -41,9 +41,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // The shell keeps every tab alive, so "Song 1" is also on the search page.
+    // The shell keeps every tab alive, so target the Home tab's track row
+    // rather than the hero title, which may show the same song.
     await tester.tap(
-      find.descendant(of: find.byType(HomeView), matching: find.text('Song 1')),
+      find.descendant(
+        of: find.byType(HomeView),
+        matching: find.byWidgetPredicate(
+          (widget) => widget is TrackTile && widget.track.id == '1',
+        ),
+      ),
     );
     player.finishLoad();
     await tester.pumpAndSettle();
@@ -163,7 +169,12 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(
-      find.descendant(of: find.byType(HomeView), matching: find.text('Song 1')),
+      find.descendant(
+        of: find.byType(HomeView),
+        matching: find.byWidgetPredicate(
+          (widget) => widget is TrackTile && widget.track.id == '1',
+        ),
+      ),
     );
     player.finishLoad();
     await tester.pumpAndSettle();
@@ -263,7 +274,12 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(
-      find.descendant(of: find.byType(HomeView), matching: find.text('Song 1')),
+      find.descendant(
+        of: find.byType(HomeView),
+        matching: find.byWidgetPredicate(
+          (widget) => widget is TrackTile && widget.track.id == '1',
+        ),
+      ),
     );
     player.finishLoad();
     await tester.pumpAndSettle();
@@ -311,7 +327,12 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(
-      find.descendant(of: find.byType(HomeView), matching: find.text('Song 1')),
+      find.descendant(
+        of: find.byType(HomeView),
+        matching: find.byWidgetPredicate(
+          (widget) => widget is TrackTile && widget.track.id == '1',
+        ),
+      ),
     );
     player.finishLoad();
     await tester.pumpAndSettle();
@@ -384,7 +405,12 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(
-      find.descendant(of: find.byType(HomeView), matching: find.text('Song 1')),
+      find.descendant(
+        of: find.byType(HomeView),
+        matching: find.byWidgetPredicate(
+          (widget) => widget is TrackTile && widget.track.id == '1',
+        ),
+      ),
     );
     player.finishLoad();
     await tester.pumpAndSettle();
@@ -447,7 +473,12 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(
-      find.descendant(of: find.byType(HomeView), matching: find.text('Song 1')),
+      find.descendant(
+        of: find.byType(HomeView),
+        matching: find.byWidgetPredicate(
+          (widget) => widget is TrackTile && widget.track.id == '1',
+        ),
+      ),
     );
     player.finishLoad();
     await tester.pumpAndSettle();

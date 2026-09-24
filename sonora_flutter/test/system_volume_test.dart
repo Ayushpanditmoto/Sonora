@@ -94,7 +94,14 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Song 1').first);
+    await tester.tap(
+      find.descendant(
+        of: find.byType(HomeView),
+        matching: find.byWidgetPredicate(
+          (widget) => widget is TrackTile && widget.track.id == '1',
+        ),
+      ),
+    );
     player.finishLoad();
     await tester.pumpAndSettle();
     await tester.tap(find.byType(MiniPlayer));

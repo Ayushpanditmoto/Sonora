@@ -23,6 +23,14 @@ String greetingFor(DateTime time) {
   return 'Good evening';
 }
 
+/// Picks one track from [tracks] without changing the catalog order.
+MediaItem pickRandomTrack(List<MediaItem> tracks, {math.Random? random}) {
+  if (tracks.isEmpty) {
+    throw ArgumentError.value(tracks, 'tracks', 'must not be empty');
+  }
+  return tracks[(random ?? math.Random()).nextInt(tracks.length)];
+}
+
 final favoriteStoreProvider = Provider<FavoriteStore>((ref) {
   final store = FavoriteStore();
   unawaited(store.load());
@@ -489,7 +497,7 @@ class HomeView extends ConsumerWidget {
               children: [
                 const _TopBar(),
                 const SizedBox(height: 28),
-                _HeroMix(track: tracks.first),
+                _HeroMix(tracks: tracks),
                 _RecentlyPlayed(store: recent),
                 const SizedBox(height: 30),
                 _SectionHeader(
@@ -632,13 +640,57 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-class _HeroMix extends ConsumerWidget {
-  const _HeroMix({required this.track});
+class _HeroMix extends ConsumerStatefulWidget {
+  const _HeroMix({required this.tracks});
 
-  final MediaItem track;
+  final List<MediaItem> tracks;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_HeroMix> createState() => _HeroMixState();
+}
+
+class _HeroMixState extends ConsumerState<_HeroMix> {
+  late MediaItem _track;
+  final math.Random _random = math.Random();
+
+  @override
+  void initState() {
+    super.initState();
+    _track = pickRandomTrack(widget.tracks);
+  }
+
+  @override
+  void didUpdateWidget(covariant _HeroMix oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.tracks.isEmpty) return;
+    if (!widget.tracks.any((track) => track.id == _track.id)) {
+      _track = pickRandomTrack(widget.tracks);
+    }
+  }
+
+  void _shuffle() {
+    if (widget.tracks.length < 2) return;
+    final currentIndex = widget.tracks.indexWhere(
+      (track) => track.id == _track.id,
+    );
+    final nextIndex = currentIndex < 0
+        ? _random.nextInt(widget.tracks.length)
+        : (currentIndex + 1 + _random.nextInt(widget.tracks.length - 1)) %
+              widget.tracks.length;
+    setState(() => _track = widget.tracks[nextIndex]);
+  }
+
+  String get _subtitle {
+    final artist = _track.artist?.trim();
+    final album = _track.album?.trim();
+    return [
+      if (artist != null && artist.isNotEmpty) artist,
+      if (album != null && album.isNotEmpty) album,
+    ].join('  •  ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return AspectRatio(
       aspectRatio: 1.55,
       child: ClipRRect(
@@ -646,7 +698,7 @@ class _HeroMix extends ConsumerWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            Artwork(path: track.artPath, fit: BoxFit.cover),
+            Artwork(path: _track.artPath, fit: BoxFit.cover),
             const DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -662,37 +714,55 @@ class _HeroMix extends ConsumerWidget {
               ),
             ),
             Positioned(
+              top: 14,
+              right: 14,
+              child: IconButton.filledTonal(
+                tooltip: 'Shuffle song',
+                onPressed: widget.tracks.length > 1 ? _shuffle : null,
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.black54,
+                  foregroundColor: Colors.white,
+                ),
+                icon: const Icon(Icons.shuffle_rounded, size: 20),
+              ),
+            ),
+            Positioned(
               left: 20,
               right: 18,
               bottom: 18,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'CURATED FOR TONIGHT',
+                        const Text(
+                          'RANDOM PICK',
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w800,
                             color: SonoraColors.green,
                           ),
                         ),
-                        SizedBox(height: 7),
+                        const SizedBox(height: 7),
                         Text(
-                          'After dark',
-                          style: TextStyle(
+                          _track.title,
+                          key: const ValueKey('hero-track-title'),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
                             fontSize: 32,
                             height: 1,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
-                        SizedBox(height: 7),
+                        const SizedBox(height: 7),
                         Text(
-                          'Soft electronics and late-night pulse',
-                          style: TextStyle(
+                          _subtitle.isEmpty ? 'Sonora' : _subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
                             fontSize: 13,
                             color: Color(0xFFD3D7D3),
                           ),
@@ -707,7 +777,7 @@ class _HeroMix extends ConsumerWidget {
                       foregroundColor: Colors.black,
                       minimumSize: const Size(54, 54),
                     ),
-                    onPressed: () => playAndRemember(ref, track),
+                    onPressed: () => playAndRemember(ref, _track),
                     icon: const Icon(Icons.play_arrow_rounded, size: 30),
                   ),
                 ],
