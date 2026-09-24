@@ -2012,7 +2012,6 @@ class _DownloadsTab extends ConsumerWidget {
                 ),
               ),
             ],
-
             const SizedBox(height: 10),
             FilledButton.icon(
               onPressed: () =>
@@ -2024,7 +2023,8 @@ class _DownloadsTab extends ConsumerWidget {
             ...tracks.map(
               (track) => _SwipeToRemove(
                 key: ValueKey(track.id),
-                onRemove: () => store.remove(track.id),
+                onRemove: () =>
+                    unawaited(_confirmRemoveDownload(context, store, track)),
                 child: TrackTile(track: track, queue: tracks),
               ),
             ),
@@ -2189,6 +2189,31 @@ class _SwipeToRemove extends StatelessWidget {
   }
 }
 
+Future<void> _confirmRemoveDownload(
+  BuildContext context,
+  DownloadStore store,
+  MediaItem track,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Remove download?'),
+      content: Text('Remove "${track.title}" from this device?'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Remove'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed ?? false) await store.remove(track.id);
+}
+
 Future<void> _confirmDownloadClear(
   BuildContext context,
   DownloadStore store,
@@ -2335,7 +2360,13 @@ class _DownloadsView extends ConsumerWidget {
                                 ...tracks.map(
                                   (track) => _SwipeToRemove(
                                     key: ValueKey(track.id),
-                                    onRemove: () => store.remove(track.id),
+                                    onRemove: () => unawaited(
+                                      _confirmRemoveDownload(
+                                        context,
+                                        store,
+                                        track,
+                                      ),
+                                    ),
                                     child: TrackTile(
                                       track: track,
                                       queue: tracks,
@@ -2556,7 +2587,8 @@ class _DownloadButton extends StatelessWidget {
     if (store.contains(track.id)) {
       return IconButton(
         tooltip: 'Remove download',
-        onPressed: () => store.remove(track.id),
+        onPressed: () =>
+            unawaited(_confirmRemoveDownload(context, store, track)),
         icon: const Icon(
           Icons.download_done_rounded,
           size: 20,

@@ -183,7 +183,22 @@ void main() {
     expect(find.text('Download failed. Try again.'), findsNothing);
     expect(find.byTooltip('Remove download'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Download').first);
+    // Removing a completed download asks first, so a tap cannot delete it by
+    // accident.
+    await tester.tap(find.byTooltip('Remove download'));
+    await tester.pumpAndSettle();
+    expect(find.text('Remove download?'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Remove download'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Remove download'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Remove'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Remove download'), findsNothing);
+
+    await tester.tap(find.byTooltip('Download').last);
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 50)),
     );
@@ -201,7 +216,7 @@ void main() {
       () => Future<void>.delayed(const Duration(milliseconds: 50)),
     );
     await tester.pump();
-    expect(find.byTooltip('Remove download'), findsNWidgets(2));
+    expect(find.byTooltip('Remove download'), findsOneWidget);
   });
 
   testWidgets('a batch and the library downloads tab report active state', (
