@@ -1,12 +1,22 @@
-package com.ayushpandit.sonora_flutter
+package com.panditfx.sonora
 
+import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.media.AudioManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import androidx.core.app.NotificationCompat
 import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
+import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import kotlin.math.roundToInt
 
@@ -65,6 +75,24 @@ class MainActivity : AudioServiceActivity() {
             }
         }
 
+        MethodChannel(messenger, DOWNLOAD_METHOD_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "requestPermission" -> {
+                    requestNotificationPermission()
+                    result.success(null)
+                }
+                "start", "update", "complete", "failed" -> {
+                    showDownloadNotification(call, call.method != "complete" && call.method != "failed")
+                    result.success(null)
+                }
+                "clear" -> {
+                    notificationManager().cancel(DOWNLOAD_NOTIFICATION_ID)
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
         EventChannel(messenger, EVENT_CHANNEL).setStreamHandler(
             object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
@@ -116,9 +144,65 @@ class MainActivity : AudioServiceActivity() {
         super.onPause()
     }
 
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATION_PERMISSION_REQUEST)
+        }
+    }
+
+    private fun showDownloadNotification(call: MethodCall, ongoing: Boolean) {
+        val manager = notificationManager()
+        if (Build.VERSION.SDK_INT >= 26) {
+            val channel = NotificationChannel(
+                DOWNLOAD_NOTIFICATION_CHANNEL,
+                "Downloads",
+                NotificationManager.IMPORTANCE_LOW,
+            )
+            channel.description = "Shows what Sonora is downloading"
+            manager.createNotificationChannel(channel)
+        }
+
+        val title = call.argument<String>("title") ?: "Downloading"
+        val text = call.argument<String>("text") ?: ""
+        val progress = call.argument<Int>("progress") ?: 0
+        val indeterminate = call.argument<Boolean>("indeterminate") ?: false
+        val launchIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = NotificationCompat.Builder(this, DOWNLOAD_NOTIFICATION_CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat_sonora)
+            .setLargeIcon(BitmapFactory.decodeResource(resources, R.drawable.sonora_notification_icon))
+            .setContentTitle(title)
+            .setContentText(text)
+            .setContentIntent(pendingIntent)
+            .setOngoing(ongoing)
+            .setAutoCancel(!ongoing)
+            .setOnlyAlertOnce(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+            .setProgress(100, progress, indeterminate)
+            .build()
+        manager.notify(DOWNLOAD_NOTIFICATION_ID, notification)
+    }
+
+    private fun notificationManager(): NotificationManager =
+        getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
     companion object {
-        private const val METHOD_CHANNEL = "com.ayushpandit.sonora_flutter/volume"
-        private const val EVENT_CHANNEL = "com.ayushpandit.sonora_flutter/volume_events"
+        private const val METHOD_CHANNEL = "com.panditfx.sonora/volume"
+        private const val EVENT_CHANNEL = "com.panditfx.sonora/volume_events"
+        private const val DOWNLOAD_METHOD_CHANNEL = "com.panditfx.sonora/downloads"
+        private const val DOWNLOAD_NOTIFICATION_CHANNEL = "com.panditfx.sonora.downloads"
+        private const val DOWNLOAD_NOTIFICATION_ID = 0x534F
+        private const val NOTIFICATION_PERMISSION_REQUEST = 0x534F
         private const val POLL_INTERVAL_MS = 300L
     }
 }

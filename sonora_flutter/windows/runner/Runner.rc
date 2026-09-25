@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.ayushpandit" "\0"
-            VALUE "FileDescription", "sonora_flutter" "\0"
+            VALUE "CompanyName", "PanditFX" "\0"
+            VALUE "FileDescription", "Sonora" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "sonora_flutter" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.ayushpandit. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 PanditFX. All rights reserved." "\0"
             VALUE "OriginalFilename", "sonora_flutter.exe" "\0"
-            VALUE "ProductName", "sonora_flutter" "\0"
+            VALUE "ProductName", "Sonora" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

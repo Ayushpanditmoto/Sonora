@@ -5,9 +5,9 @@ import 'sonora_theme.dart';
 /// A soft highlight that travels across its child, used everywhere something is
 /// still loading.
 ///
-/// Written here rather than pulled in as a package: it is a single
-/// [ShaderMask] over an [AnimationController], and the app's colours are all it
-/// needs.
+/// The highlight is painted as a foreground gradient rather than a shader mask.
+/// A [ShaderMask] creates an offscreen compositing layer for every skeleton;
+/// keeping this as a direct decoration avoids that GPU work on 120 Hz displays.
 class Shimmer extends StatefulWidget {
   const Shimmer({required this.child, super.key});
 
@@ -36,23 +36,25 @@ class _ShimmerState extends State<Shimmer> with SingleTickerProviderStateMixin {
     if (MediaQuery.disableAnimationsOf(context)) return widget.child;
     return AnimatedBuilder(
       animation: _controller,
-      builder: (context, child) => ShaderMask(
-        blendMode: BlendMode.srcATop,
-        shaderCallback: (bounds) {
-          final travel = 2 * (1 - _controller.value);
-          return LinearGradient(
-            begin: Alignment(-1 - travel, 0),
-            end: Alignment(1 - travel, 0),
-            colors: [
-              SonoraColors.surfaceHigh,
-              Color.lerp(SonoraColors.surfaceHigh, Colors.white, 0.1)!,
-              SonoraColors.surfaceHigh,
-            ],
-            stops: const [0.3, 0.5, 0.7],
-          ).createShader(bounds);
-        },
-        child: child,
-      ),
+      builder: (context, child) {
+        final travel = 2 * (1 - _controller.value);
+        return DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment(-1 - travel, 0),
+              end: Alignment(1 - travel, 0),
+              colors: [
+                Colors.transparent,
+                Colors.white.withValues(alpha: 0.1),
+                Colors.transparent,
+              ],
+              stops: const [0.3, 0.5, 0.7],
+            ),
+          ),
+          child: child,
+        );
+      },
       child: widget.child,
     );
   }

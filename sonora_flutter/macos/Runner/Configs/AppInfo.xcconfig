@@ -8,7 +8,7 @@
 PRODUCT_NAME = sonora_flutter
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.ayushpandit.sonoraFlutter
+PRODUCT_BUNDLE_IDENTIFIER = com.panditfx.sonora
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 com.ayushpandit. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 PanditFX. All rights reserved.

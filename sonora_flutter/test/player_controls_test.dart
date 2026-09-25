@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sonora_flutter/player/sonora_audio_handler.dart';
 import 'package:sonora_flutter/player/system_volume.dart';
 import 'package:sonora_flutter/services/music_api.dart';
+import 'package:sonora_flutter/services/track_source.dart';
 import 'package:sonora_flutter/ui/app_shell.dart';
 import 'package:sonora_flutter/ui/sonora_theme.dart';
 
@@ -16,6 +19,95 @@ import 'support/test_viewport.dart';
 const _art = 'assets/art/neon-rain.png';
 
 void main() {
+  testWidgets('the loading spinner does not move the progress bar', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    useTestViewport(tester);
+    final source = Completer<ResolvedTrackSource>();
+    final player = FakeAudioPlayer();
+    final handler = SonoraAudioHandler(
+      player: player,
+      resolveStream: (track) => source.future,
+    );
+    final track = MediaItem(
+      id: 'youtube:loading_1',
+      title: 'Loading song',
+      artist: 'YouTube',
+      duration: const Duration(minutes: 3),
+      extras: const {'source': 'youtube', 'sourceId': 'loading_1'},
+    );
+    final loading = handler.playTrack(track);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          audioHandlerProvider.overrideWithValue(handler),
+          positionProvider.overrideWith((ref) => Stream.value(Duration.zero)),
+          catalogProvider.overrideWith((ref) async => _songs),
+          playlistsProvider.overrideWith((ref) async => const []),
+          albumsProvider.overrideWith((ref) async => const []),
+          artistsProvider.overrideWith((ref) async => const []),
+        ],
+        child: MaterialApp(theme: SonoraTheme.dark, home: const AppShell()),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byType(MiniPlayer));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    final nowPlaying = find.byType(NowPlayingView);
+    expect(nowPlaying, findsOneWidget);
+    expect(find.text('Loading audio…'), findsNothing);
+    expect(
+      find.descendant(
+        of: nowPlaying,
+        matching: find.byType(CircularProgressIndicator),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: nowPlaying,
+        matching: find.byTooltip('Preparing track'),
+      ),
+      findsOneWidget,
+    );
+    final progress = find.descendant(
+      of: nowPlaying,
+      matching: find.byType(Slider),
+    );
+    final slider = tester.widget<Slider>(progress);
+    expect(slider.onChanged, isNull);
+    final loadingProgressRect = tester.getRect(progress);
+    expect(player.stopCount, 1);
+    expect(player.loadedUrls, isEmpty);
+
+    source.complete(
+      ResolvedTrackSource(
+        url: Uri.parse('https://media.test/loading.m4a'),
+        extension: 'm4a',
+      ),
+    );
+    await tester.pump();
+    player.finishLoad();
+    await loading;
+    await tester.pumpAndSettle();
+
+    expect(tester.getRect(progress), loadingProgressRect);
+    // Routine rebuffering must not disable seeking or introduce any vertical
+    // layout shift; only resolving a replacement source locks the slider.
+    handler.playbackState.add(
+      PlaybackState(processingState: AudioProcessingState.buffering),
+    );
+    await tester.pump();
+    expect(tester.widget<Slider>(progress).onChanged, isNotNull);
+    expect(find.text('Loading audio…'), findsNothing);
+    expect(tester.getRect(progress), loadingProgressRect);
+    expect(player.loadedUrls, ['https://media.test/loading.m4a']);
+  });
+
   testWidgets('shuffle, repeat and the queue work from the player', (
     tester,
   ) async {
@@ -61,6 +153,34 @@ void main() {
 
     expect(find.text('NOW PLAYING'), findsOneWidget);
     expect(find.text('3 in queue'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(NowPlayingView),
+        matching: find.text('42 plays'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('track-plays-1')),
+      findsAtLeastNWidgets(1),
+    );
+    expect(
+      find.descendant(
+        of: find.byType(TrackTile),
+        matching: find.byTooltip('Favorite'),
+      ),
+      findsNothing,
+    );
+    expect(find.byTooltip('Save track'), findsNothing);
+    expect(find.byTooltip('Favorite'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(NowPlayingView),
+        matching: find.byTooltip('Download'),
+      ),
+      findsOneWidget,
+      reason: 'every playable track exposes download beside Like',
+    );
 
     // Shuffle turns on and leaves the playing track at the front.
     await tester.tap(find.byTooltip('Shuffle off'));
@@ -520,5 +640,5 @@ MediaItem _song(String id, String title) => MediaItem(
   id: id,
   title: title,
   artist: 'Sonora',
-  extras: {'url': 'https://cdn.test/$id.mp3', 'art': _art},
+  extras: {'url': 'https://cdn.test/$id.mp3', 'art': _art, 'playCount': 42},
 );

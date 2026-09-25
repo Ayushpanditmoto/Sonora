@@ -33,6 +33,7 @@ void main() {
     expect(track.duration, const Duration(seconds: 214));
     expect(track.artUri, Uri.parse('https://cdn.test/a.jpg'));
     expect(track.extras?['url'], 'https://cdn.test/a.mp3');
+    expect(track.extras?['playCount'], 42);
   });
 
   test('playlists use /playlists and artists use their topSongs', () async {

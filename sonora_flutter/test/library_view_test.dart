@@ -38,6 +38,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.widgetWithText(Tab, 'Downloads'), findsOneWidget);
+    expect(tester.widget<Text>(find.text('Your library')).style?.fontSize, 26);
     expect(find.widgetWithText(Tab, 'Recently played'), findsOneWidget);
     expect(find.widgetWithText(Tab, 'Liked songs'), findsOneWidget);
     expect(

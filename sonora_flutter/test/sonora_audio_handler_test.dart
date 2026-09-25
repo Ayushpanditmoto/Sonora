@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:sonora_flutter/player/media_item_codec.dart';
 import 'package:sonora_flutter/player/sonora_audio_handler.dart';
+import 'package:sonora_flutter/services/track_source.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/fake_audio_player.dart';
@@ -36,6 +39,173 @@ void main() {
     expect(player.playCount, 1, reason: 'only the newest load starts playback');
   });
 
+  test(
+    'the selected track and replacement queue are applied together',
+    () async {
+      final player = FakeAudioPlayer();
+      final handler = SonoraAudioHandler(player: player);
+      final tracks = [
+        _track('a', 'https://cdn.test/a.mp3'),
+        _track('b', 'https://cdn.test/b.mp3'),
+        _track('c', 'https://cdn.test/c.mp3'),
+      ];
+
+      final playing = handler.playTrack(tracks[1], queue: tracks);
+
+      expect(handler.mediaItem.value?.id, 'b');
+      expect(handler.queue.value.map((track) => track.id), ['a', 'b', 'c']);
+      expect(handler.playbackState.value.queueIndex, 1);
+      player.finishLoad();
+      await playing;
+      expect(player.playCount, 1);
+    },
+  );
+
+  test('play during a new load never resumes the previous source', () async {
+    final player = FakeAudioPlayer();
+    final handler = SonoraAudioHandler(player: player);
+    final first = handler.playTrack(_track('a', 'https://cdn.test/a.mp3'));
+    player.finishLoad();
+    await first;
+    expect(player.playCount, 1);
+
+    final second = handler.playTrack(_track('b', 'https://cdn.test/b.mp3'));
+    await _settle();
+    // Simulates a play command arriving from the notification while B is still
+    // loading and the player object can still report A's old source.
+    await handler.play();
+    await _settle();
+    expect(player.loadedUrls, [
+      'https://cdn.test/a.mp3',
+      'https://cdn.test/b.mp3',
+    ]);
+
+    player.finishLoad();
+    await second;
+    expect(handler.mediaItem.value?.id, 'b');
+    expect(player.playCount, 2, reason: 'A must not be played again behind B');
+  });
+
+  test(
+    'switching stops the old source and publishes loading while resolving',
+    () async {
+      final source = Completer<ResolvedTrackSource>();
+      final player = FakeAudioPlayer();
+      final handler = SonoraAudioHandler(
+        player: player,
+        resolveStream: (track) => source.future,
+      );
+      final first = _track('a', 'https://cdn.test/a.mp3');
+      final second = MediaItem(
+        id: 'youtube:b',
+        title: 'Second',
+        extras: const {'source': 'youtube', 'sourceId': 'b'},
+      );
+      final playing = handler.playTrack(first);
+      player.finishLoad();
+      await playing;
+      expect(player.playing, isTrue);
+
+      final switching = handler.playTrack(second, queue: [first, second]);
+      await _settle();
+
+      expect(player.stopCount, 2, reason: 'initial stop plus track switch');
+      expect(player.playing, isFalse);
+      expect(player.audioSource, isNull);
+      expect(handler.mediaItem.value?.id, 'youtube:b');
+      expect(
+        handler.playbackState.value.processingState,
+        AudioProcessingState.loading,
+      );
+      expect(handler.playbackState.value.playing, isFalse);
+      expect(handler.playbackState.value.updatePosition, Duration.zero);
+      expect(player.loadedUrls, ['https://cdn.test/a.mp3']);
+
+      source.complete(
+        ResolvedTrackSource(
+          url: Uri(scheme: 'https', host: 'media.test', path: '/b.m4a'),
+          extension: 'm4a',
+        ),
+      );
+      await _settle();
+      expect(player.loadedUrls, [
+        'https://cdn.test/a.mp3',
+        'https://media.test/b.m4a',
+      ]);
+      player.finishLoad();
+      await switching;
+
+      expect(
+        handler.playbackState.value.processingState,
+        isNot(AudioProcessingState.loading),
+      );
+      expect(handler.playbackState.value.playing, isTrue);
+      expect(player.playCount, 2);
+    },
+  );
+
+  test('a failed replacement never resumes the old source', () async {
+    final player = FakeAudioPlayer();
+    final handler = SonoraAudioHandler(
+      player: player,
+      resolveStream: (track) async =>
+          throw const TrackSourceResolutionException(' unavailable '),
+    );
+    final first = _track('a', 'https://cdn.test/a.mp3');
+    final second = MediaItem(
+      id: 'youtube:b',
+      title: 'Second',
+      extras: const {'source': 'youtube', 'sourceId': 'b'},
+    );
+    final playing = handler.playTrack(first);
+    player.finishLoad();
+    await playing;
+    final message = handler.errors.first;
+
+    await handler.playTrack(second, queue: [first, second]);
+
+    expect(await message, ' unavailable ');
+    expect(player.stopCount, 2);
+    expect(player.playing, isFalse);
+    expect(player.audioSource, isNull);
+    expect(player.playCount, 1, reason: 'the old song must not resume');
+    expect(handler.mediaItem.value?.id, 'youtube:b');
+    expect(
+      handler.playbackState.value.processingState,
+      isNot(AudioProcessingState.loading),
+    );
+  });
+
+  test(
+    'a completion during a selected load cannot skip to another track',
+    () async {
+      final player = FakeAudioPlayer();
+      final handler = SonoraAudioHandler(player: player);
+      final tracks = [
+        _track('a', 'https://cdn.test/a.mp3'),
+        _track('b', 'https://cdn.test/b.mp3'),
+        _track('c', 'https://cdn.test/c.mp3'),
+      ];
+      final first = handler.playTrack(tracks[0]);
+      player.finishLoad();
+      await first;
+
+      final selected = handler.playTrack(tracks[1], queue: tracks);
+      await _settle();
+      player.emitProcessingState(ProcessingState.completed);
+      await _settle();
+
+      expect(player.loadedUrls, [
+        'https://cdn.test/a.mp3',
+        'https://cdn.test/b.mp3',
+      ]);
+      expect(handler.mediaItem.value?.id, 'b');
+
+      player.finishLoad();
+      await selected;
+    },
+  );
+
   test('tracks without a stream url are ignored', () async {
     final player = FakeAudioPlayer();
     final handler = SonoraAudioHandler(player: player);
@@ -45,6 +215,120 @@ void main() {
     expect(player.loadedUrls, isEmpty);
     expect(handler.mediaItem.value, isNull);
   });
+
+  test(
+    'a YouTube track resolves a fresh URL only when playback starts',
+    () async {
+      final player = FakeAudioPlayer();
+      var resolutions = 0;
+      final handler = SonoraAudioHandler(
+        player: player,
+        resolveStream: (track) async {
+          resolutions++;
+          expect(track.id, 'youtube:video_1');
+          return ResolvedTrackSource(
+            url: Uri.parse('https://media.test/fresh-$resolutions.m4a'),
+            extension: 'm4a',
+            headers: const {'User-Agent': 'validated-media-client'},
+          );
+        },
+      );
+      final track = MediaItem(
+        id: 'youtube:video_1',
+        title: 'Authorized audio',
+        extras: const {'source': 'youtube', 'sourceId': 'video_1'},
+      );
+      expect(resolutions, 0);
+
+      final loading = handler.playTrack(track);
+      await _settle();
+      expect(resolutions, 1);
+      expect(player.loadedUrls, ['https://media.test/fresh-1.m4a']);
+      expect(player.loadedHeaders.last, {
+        'User-Agent': 'validated-media-client',
+      });
+      expect(track.extras, isNot(contains('url')));
+
+      player.finishLoad();
+      await loading;
+      expect(player.playCount, 1);
+
+      await handler.stop();
+      final reloading = handler.playTrack(track);
+      await _settle();
+      expect(
+        resolutions,
+        2,
+        reason: 'a later load must not reuse an expired URL',
+      );
+      expect(player.loadedUrls, [
+        'https://media.test/fresh-1.m4a',
+        'https://media.test/fresh-2.m4a',
+      ]);
+      expect(player.loadedHeaders, [
+        {'User-Agent': 'validated-media-client'},
+        {'User-Agent': 'validated-media-client'},
+      ]);
+      player.finishLoad();
+      await reloading;
+    },
+  );
+
+  test('a forbidden YouTube URL is retried once with a fresh URL', () async {
+    final player = FakeAudioPlayer()
+      ..failOnceUrls.add('https://media.test/stale.m4a');
+    var resolutions = 0;
+    final handler = SonoraAudioHandler(
+      player: player,
+      resolveStream: (track) async {
+        resolutions++;
+        return ResolvedTrackSource(
+          url: Uri.parse(
+            resolutions == 1
+                ? 'https://media.test/stale.m4a'
+                : 'https://media.test/fresh.m4a',
+          ),
+          extension: 'm4a',
+        );
+      },
+    );
+    final track = MediaItem(
+      id: 'youtube:video_1',
+      title: 'Authorized audio',
+      extras: const {'source': 'youtube', 'sourceId': 'video_1'},
+    );
+
+    final loading = handler.playTrack(track);
+    await _settle();
+
+    expect(resolutions, 2);
+    expect(player.loadedUrls, [
+      'https://media.test/stale.m4a',
+      'https://media.test/fresh.m4a',
+    ]);
+    player.finishLoad();
+    await loading;
+    expect(handler.mediaItem.value?.id, track.id);
+    expect(player.playCount, 1);
+  });
+
+  test(
+    'starting playback does not keep the load active until song end',
+    () async {
+      final playCompleter = Completer<void>();
+      final player = FakeAudioPlayer()..playCompleter = playCompleter;
+      final handler = SonoraAudioHandler(player: player);
+      final track = _track('a', 'https://cdn.test/a.mp3');
+
+      final loading = handler.playTrack(track);
+      player.finishLoad();
+
+      await expectLater(loading, completes);
+      expect(handler.mediaItem.value?.id, 'a');
+      expect(player.playCount, 1);
+      playCompleter.complete();
+    },
+  );
 
   test('replaying the loaded track restarts it without a new load', () async {
     final player = FakeAudioPlayer();
@@ -82,10 +366,21 @@ void main() {
 
     // Next carries on from the track that is playing, not from the old index.
     final next = handler.skipToNext();
+    await _settle();
+    expect(handler.mediaItem.value?.id, 'c');
+    expect(
+      handler.playbackState.value.processingState,
+      AudioProcessingState.loading,
+    );
+    expect(player.stopCount, 2);
+    expect(player.playing, isFalse);
+    expect(player.audioSource, isNull);
+    expect(player.loadedUrls, [
+      'https://cdn.test/b.mp3',
+      'https://cdn.test/c.mp3',
+    ]);
     player.finishLoad();
     await next;
-
-    expect(handler.mediaItem.value?.id, 'c');
   });
 
   test('repeat all wraps the queue and repeat one loops the track', () async {

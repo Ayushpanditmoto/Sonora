@@ -16,6 +16,33 @@ import 'support/test_viewport.dart';
 const _art = 'assets/art/neon-rain.png';
 
 void main() {
+  testWidgets(
+    'the app drawer credits Ayush without personalizing the greeting',
+    (tester) async {
+      useTestViewport(tester);
+
+      await tester.pumpWidget(_app());
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Ayush'), findsNothing);
+      expect(find.text(greetingFor(DateTime.now())), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Open menu'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AppDrawer), findsOneWidget);
+      expect(find.text('Made by Ayush Pandit'), findsOneWidget);
+      expect(find.text('github.com/Ayushpanditmoto'), findsOneWidget);
+      expect(find.byKey(const ValueKey('drawer-home')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('drawer-library')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AppDrawer), findsNothing);
+      expect(find.text('Your library'), findsOneWidget);
+    },
+  );
+
   testWidgets('See all opens a page listing the whole section', (tester) async {
     useTestViewport(tester);
 

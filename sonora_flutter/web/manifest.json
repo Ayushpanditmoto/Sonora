@@ -1,11 +1,11 @@
 {
-    "name": "sonora_flutter",
-    "short_name": "sonora_flutter",
+    "name": "Sonora",
+    "short_name": "Sonora",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#090B0A",
+    "theme_color": "#63E69D",
+    "description": "A polished open-source music player.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

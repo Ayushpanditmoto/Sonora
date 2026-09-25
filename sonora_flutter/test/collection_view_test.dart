@@ -14,6 +14,7 @@ import 'package:sonora_flutter/ui/app_shell.dart';
 import 'package:sonora_flutter/ui/sonora_theme.dart';
 
 import 'support/fake_audio_player.dart';
+import 'support/media_fixtures.dart';
 import 'support/test_viewport.dart';
 
 const _art = 'assets/art/neon-rain.png';
@@ -32,11 +33,13 @@ void main() {
     addTearDown(() => dir.deleteSync(recursive: true));
 
     final downloads = DownloadStore(
-      // No real bytes are written: what is being checked is which source the
-      // player asks for, not that the file has content.
+      // The bytes are not what is being checked, only that the file exists and
+      // is a media container, which is what the store requires before it keeps a
+      // download. What is asserted is which source the player asks for.
       fetcher: (url, path, onProgress) async {
-        onProgress(10, 10);
-        return 10;
+        final file = File(path)..writeAsBytesSync(mediaPayload(12));
+        onProgress(file.lengthSync(), file.lengthSync());
+        return file.lengthSync();
       },
       directory: () async => dir,
     );
@@ -93,6 +96,7 @@ void main() {
 
     // A track that was not downloaded still streams as before.
     await tester.tap(find.text('Album song 2'));
+    player.finishLoad();
     await tester.pumpAndSettle();
 
     expect(player.loadedUrls, ['https://cdn.test/2.mp3']);
@@ -120,13 +124,13 @@ void main() {
             await releaseFailure.future;
             throw StateError('offline');
           }
-          final file = File(path)..writeAsStringSync('audio');
+          final file = File(path)..writeAsBytesSync(mediaPayload(12));
           onProgress(file.lengthSync(), file.lengthSync());
           return file.lengthSync();
         }
         onProgress(2048, -1);
         await releaseUnknown.future;
-        final file = File(path)..writeAsStringSync('audio');
+        final file = File(path)..writeAsBytesSync(mediaPayload(12));
         return file.lengthSync();
       },
       directory: () async => dir,
@@ -236,7 +240,7 @@ void main() {
           onProgress(2048, 4096);
           await releaseFirst.future;
         }
-        final file = File(path)..writeAsStringSync('audio');
+        final file = File(path)..writeAsBytesSync(mediaPayload(12));
         return file.lengthSync();
       },
       directory: () async => dir,
@@ -303,7 +307,7 @@ void main() {
 
     final downloads = DownloadStore(
       fetcher: (url, path, onProgress) async {
-        File(path).writeAsStringSync('audio');
+        File(path).writeAsBytesSync(mediaPayload(12));
         return 5;
       },
       directory: () async => dir,
@@ -351,6 +355,15 @@ void main() {
 
     expect(find.text('Album song 1'), findsOneWidget);
     expect(find.text('Play all'), findsOneWidget);
+
+    // Downloads are not swipe-to-remove. A horizontal drag must leave the
+    // saved row and its file alone; removal is available through the explicit
+    // download button and its confirmation dialog.
+    expect(find.byType(Dismissible), findsNothing);
+    await tester.drag(find.text('Album song 1'), const Offset(-500, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('Album song 1'), findsOneWidget);
+    expect(downloads.contains('1'), isTrue);
 
     // Clearing asks first, so the audio is not deleted by a stray tap.
     await tester.tap(find.text('Clear'));
@@ -403,6 +416,7 @@ void main() {
     expect(find.text('Album song 2'), findsOneWidget);
 
     await tester.tap(find.text('Play all'));
+    player.finishLoad();
     await tester.pumpAndSettle();
 
     expect(player.loadedUrls, ['https://cdn.test/1.mp3']);
@@ -411,6 +425,7 @@ void main() {
 
     // Playing a later song keeps the album as the queue.
     await tester.tap(find.text('Album song 2'));
+    player.finishLoad();
     await tester.pumpAndSettle();
 
     expect(player.loadedUrls, [

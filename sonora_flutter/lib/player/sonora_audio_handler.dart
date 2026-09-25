@@ -7,6 +7,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'media_item_codec.dart';
+import '../services/track_source.dart';
 import 'system_volume.dart';
 
 final audioHandlerProvider = Provider<SonoraAudioHandler>(
@@ -208,15 +209,17 @@ class SonoraAudioHandler extends BaseAudioHandler
   SonoraAudioHandler({
     AudioPlayer? player,
     String? Function(String id)? localPathFor,
+    ResolveTrackStream? resolveStream,
   }) : _player = player ?? AudioPlayer(),
-       _localPathFor = localPathFor ?? ((_) => null) {
+       _localPathFor = localPathFor ?? ((_) => null),
+       _resolveStream = resolveStream ?? TrackSourceResolver().resolve {
     // Tells Android this is local playback, which routes the media session to
     // the music stream so the hardware volume keys adjust the same level the
     // player screen shows.
     androidPlaybackInfo.add(LocalAndroidPlaybackInfo());
     _player.playbackEventStream.listen((_) => _broadcast());
     _player.processingStateStream.listen((state) {
-      if (state != ProcessingState.completed) return;
+      if (state != ProcessingState.completed || _activeLoadId != null) return;
       if (_repeatMode == AudioServiceRepeatMode.one) {
         unawaited(_restartCurrent());
         return;
@@ -232,6 +235,10 @@ class SonoraAudioHandler extends BaseAudioHandler
   /// A downloaded track is played from its own file, so it needs no connection
   /// and does not depend on a stream url that may since have expired.
   final String? Function(String id) _localPathFor;
+
+  /// Resolves a source URL only when it is actually needed. In particular, a
+  /// YouTube URL is short-lived and must never be persisted in [MediaItem].
+  final ResolveTrackStream _resolveStream;
 
   /// The underlying player, so tests can inspect loads, seeks and volume.
   AudioPlayer get player => _player;
@@ -252,6 +259,16 @@ class SonoraAudioHandler extends BaseAudioHandler
 
   /// Bumped for every load request so a superseded load can be recognised.
   int _loadId = 0;
+
+  /// The request currently loading audio, if any. A completion event from the
+  /// previous source must not advance the queue while this is non-null.
+  int? _activeLoadId;
+  String? _loadingItemId;
+
+  /// The item that belongs to [_player]'s current source. The media item can be
+  /// updated optimistically before a load completes, so it cannot be used on
+  /// its own to decide whether the player is safe to resume.
+  String? _loadedItemId;
 
   /// Puts the last played track and its queue back after a restart.
   ///
@@ -318,6 +335,9 @@ class SonoraAudioHandler extends BaseAudioHandler
 
   /// Loads [item] and starts playing it.
   ///
+  /// When [queue] is supplied it replaces the existing queue in the same
+  /// operation, so the selected track and the queue index can never disagree.
+  ///
   /// Starting a load aborts whatever load is still in flight, and just_audio
   /// reports that abort as [PlayerInterruptedException] ("Loading interrupted")
   /// on the previous call. Taps, the notification and the completion handler
@@ -325,23 +345,53 @@ class SonoraAudioHandler extends BaseAudioHandler
   /// that interruption is expected here and is swallowed by
   /// [_ignoreInterruptions] instead of escaping through the futures the UI
   /// fires without awaiting.
-  Future<void> playTrack(MediaItem item) async {
+  Future<void> playTrack(MediaItem item, {List<MediaItem>? queue}) async {
     // A downloaded track plays from its own file. A stream url is then neither
     // needed nor consulted, so a download made months ago still plays and a
     // track with an expired link still works offline.
     final localPath = _localPathFor(item.id);
-    final url = item.extras?['url'] as String?;
-    if (localPath == null && (url == null || url.isEmpty)) return;
+    final directSource = directTrackSource(item);
+    if (localPath == null && directSource == null && !isYouTubeTrack(item)) {
+      return;
+    }
 
-    // The source is already loaded, so restarting it needs no network load and
-    // cannot interrupt anything else.
     final alreadyLoaded =
-        mediaItem.value?.id == item.id && _player.audioSource != null;
+        _loadedItemId == item.id && _player.audioSource != null;
+    final loadId = ++_loadId;
+    _activeLoadId = loadId;
+    _loadingItemId = item.id;
+    if (!alreadyLoaded) _loadedItemId = null;
 
-    _index = queue.value.indexWhere((track) => track.id == item.id);
+    if (queue != null && queue.isNotEmpty) {
+      final replacement = List<MediaItem>.unmodifiable(queue);
+      this.queue.add(replacement);
+      final selected = replacement.indexWhere((track) => track.id == item.id);
+      if (selected < 0) {
+        this.queue.add([
+          item,
+          ...replacement.where((track) => track.id != item.id),
+        ]);
+        _index = 0;
+      } else {
+        _index = selected;
+      }
+    }
+
+    _index = this.queue.value.indexWhere((track) => track.id == item.id);
     if (_index < 0) {
-      queue.add([item, ...queue.value.where((track) => track.id != item.id)]);
+      this.queue.add([
+        item,
+        ...this.queue.value.where((track) => track.id != item.id),
+      ]);
       _index = 0;
+    }
+
+    // Request the previous source stop before resolving a new URL. Otherwise a
+    // slow or failed YouTube lookup leaves the old song audible under the new
+    // title. The stop is not awaited: just_audio submits it synchronously, and
+    // waiting on its Future would delay the replacement's setUrl by a microtask.
+    if (!alreadyLoaded) {
+      unawaited(_ignoreInterruptions(_player.stop));
     }
     mediaItem.add(item);
     // Publish the new track straight away: the media session and the queue view
@@ -350,24 +400,80 @@ class SonoraAudioHandler extends BaseAudioHandler
     _broadcast();
     _saveSession();
 
-    final loadId = ++_loadId;
-    await _ignoreInterruptions(() async {
-      if (alreadyLoaded) {
-        await _player.seek(Duration.zero);
-      } else if (localPath != null) {
-        await _player.setFilePath(localPath);
-      } else {
-        await _player.setUrl(url!);
+    try {
+      await _ignoreInterruptions(() async {
+        if (alreadyLoaded) {
+          await _player.seek(Duration.zero);
+        } else if (localPath != null) {
+          await _player.setFilePath(localPath);
+        } else {
+          try {
+            await _loadRemoteSource(
+              item,
+              directSource: directSource,
+              loadId: loadId,
+            );
+          } on TrackSourceResolutionException {
+            if (loadId != _loadId) return;
+            rethrow;
+          }
+        }
+        if (loadId != _loadId) return; // Superseded while loading.
+        _loadedItemId = item.id;
+        // just_audio's play future completes only when playback ends. Keeping
+        // that awaited would leave the load active for the whole song and make
+        // a later Play/retry request look like it was still loading.
+        unawaited(_ignoreInterruptions(_player.play));
+      });
+    } finally {
+      if (_activeLoadId == loadId) {
+        _activeLoadId = null;
+        _loadingItemId = null;
+        _broadcast();
       }
-      if (loadId != _loadId) return; // Superseded while loading.
-      await _player.play();
-    });
+    }
+  }
+
+  /// Loads a network source, retrying one time when YouTube hands back an
+  /// IP/session-bound URL that ExoPlayer rejects with HTTP 403.
+  Future<void> _loadRemoteSource(
+    MediaItem item, {
+    required ResolvedTrackSource? directSource,
+    required int loadId,
+  }) async {
+    for (var attempt = 0; ; attempt++) {
+      final source = directSource ?? await _resolveStream(item);
+      if (loadId != _loadId) return; // Superseded while resolving.
+      try {
+        await _player.setUrl(
+          source.url.toString(),
+          headers: source.headers.isEmpty ? null : source.headers,
+        );
+        return;
+      } on PlayerException catch (error) {
+        final forbidden = '${error.code} ${error.message}'.contains('403');
+        if (!isYouTubeTrack(item) || !forbidden) rethrow;
+        if (attempt > 0) {
+          throw const TrackSourceResolutionException(
+            'YouTube rejected this audio stream. Try another result or download it.',
+          );
+        }
+        // Resolution creates a new Googlevideo URL. Retry it once because these
+        // URLs can be bound to a different media connection or expire early.
+      }
+    }
   }
 
   @override
   Future<void> play() async {
-    if (_player.audioSource == null && mediaItem.value != null) {
-      await playTrack(mediaItem.value!);
+    final current = mediaItem.value;
+    if (current == null) return;
+    // A play command can arrive from the notification while this exact item is
+    // still loading. Let that request finish rather than starting the old
+    // source or needlessly interrupting the new load.
+    if (_activeLoadId != null && _loadingItemId == current.id) return;
+    if (_loadedItemId != current.id || _player.audioSource == null) {
+      await playTrack(current);
       return;
     }
     await _ignoreInterruptions(_player.play);
@@ -379,6 +485,9 @@ class SonoraAudioHandler extends BaseAudioHandler
   @override
   Future<void> stop() async {
     _loadId++; // Abandon any load that is still in flight.
+    _activeLoadId = null;
+    _loadingItemId = null;
+    _loadedItemId = null;
     await _ignoreInterruptions(_player.stop);
     return super.stop();
   }
@@ -481,7 +590,9 @@ class SonoraAudioHandler extends BaseAudioHandler
       // instead of something the user can read and retry.
       if (_errors.isClosed) return;
       _errors.add(
-        error is PlayerException
+        error is TrackSourceResolutionException
+            ? error.message
+            : error is PlayerException
             ? 'This track could not be played. Its audio may no longer be available.'
             : 'Something went wrong while playing this track.',
       );
@@ -489,26 +600,34 @@ class SonoraAudioHandler extends BaseAudioHandler
   }
 
   void _broadcast() {
+    final loadingCurrent =
+        _activeLoadId != null && _loadingItemId == mediaItem.value?.id;
     playbackState.add(
       PlaybackState(
         controls: [
           MediaControl.skipToPrevious,
-          _player.playing ? MediaControl.pause : MediaControl.play,
+          !loadingCurrent && _player.playing
+              ? MediaControl.pause
+              : MediaControl.play,
           MediaControl.skipToNext,
           MediaControl.stop,
         ],
         systemActions: const {MediaAction.seek},
         androidCompactActionIndices: const [0, 1, 2],
-        processingState: switch (_player.processingState) {
-          ProcessingState.idle => AudioProcessingState.idle,
-          ProcessingState.loading => AudioProcessingState.loading,
-          ProcessingState.buffering => AudioProcessingState.buffering,
-          ProcessingState.ready => AudioProcessingState.ready,
-          ProcessingState.completed => AudioProcessingState.completed,
-        },
-        playing: _player.playing,
-        updatePosition: _player.position,
-        bufferedPosition: _player.bufferedPosition,
+        processingState: loadingCurrent
+            ? AudioProcessingState.loading
+            : switch (_player.processingState) {
+                ProcessingState.idle => AudioProcessingState.idle,
+                ProcessingState.loading => AudioProcessingState.loading,
+                ProcessingState.buffering => AudioProcessingState.buffering,
+                ProcessingState.ready => AudioProcessingState.ready,
+                ProcessingState.completed => AudioProcessingState.completed,
+              },
+        playing: !loadingCurrent && _player.playing,
+        updatePosition: loadingCurrent ? Duration.zero : _player.position,
+        bufferedPosition: loadingCurrent
+            ? Duration.zero
+            : _player.bufferedPosition,
         speed: _player.speed,
         queueIndex: _index,
         repeatMode: _repeatMode,

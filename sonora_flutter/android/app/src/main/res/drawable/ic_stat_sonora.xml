@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android renders notification/status-bar icons from their alpha mask and
+  ignores color. This transparent vector is the eight-bar Sonora mark from the
+  app artwork, sized and padded for a 24dp status icon.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M6.2,10.8 L6.2,13"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="1.35" />
+    <path
+        android:pathData="M7.9,8.5 L7.9,14"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="1.35" />
+    <path
+        android:pathData="M9.6,6.5 L9.6,15.4"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="1.35" />
+    <path
+        android:pathData="M11.3,5.7 L11.3,11.4"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="1.35" />
+    <path
+        android:pathData="M13,7.3 L13,12.8"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="1.35" />
+    <path
+        android:pathData="M14.7,8.5 L14.7,16.6"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="1.35" />
+    <path
+        android:pathData="M16.4,10.7 L16.4,14.9"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="1.35" />
+    <path
+        android:pathData="M18.1,11.5 L18.1,13.5"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="1.35" />
+</vector>

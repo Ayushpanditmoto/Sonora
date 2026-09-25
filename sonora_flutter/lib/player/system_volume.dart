@@ -13,10 +13,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 class SystemVolume {
   SystemVolume();
 
-  static const _method = MethodChannel('com.ayushpandit.sonora_flutter/volume');
-  static const _events = EventChannel(
-    'com.ayushpandit.sonora_flutter/volume_events',
-  );
+  static const _method = MethodChannel('com.panditfx.sonora/volume');
+  static const _events = EventChannel('com.panditfx.sonora/volume_events');
 
   /// Whether the device volume can be read and written on this platform.
   bool get isSupported =>

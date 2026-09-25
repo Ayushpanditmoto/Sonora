@@ -69,11 +69,16 @@ class FakeSystemVolume extends SystemVolume {
 /// `PlayerInterruptedException`).
 class FakeAudioPlayer extends AudioPlayer {
   final loadedUrls = <String>[];
+  final loadedHeaders = <Map<String, String>>[];
   final loadedPaths = <String>[];
+  final failOnceUrls = <String>{};
   final seeks = <Duration?>[];
   final volumes = <double>[];
-  final _loads = <Completer<Duration?>>[];
+  final _loads = <({AudioSource source, Completer<Duration?> completer})>[];
+  final _processingStates = StreamController<ProcessingState>.broadcast();
   int playCount = 0;
+  int stopCount = 0;
+  Completer<void>? playCompleter;
 
   @override
   LoopMode loopMode = LoopMode.off;
@@ -84,11 +89,21 @@ class FakeAudioPlayer extends AudioPlayer {
   /// loading, standing in for a dead or expired stream url.
   int? failLoadsWith;
 
-  /// Completes every pending load with a fake duration.
+  /// Completes every pending load with a fake duration. The source becomes
+  /// current only when its load succeeds, matching just_audio's behaviour while
+  /// a different item is still buffering.
   void finishLoad() {
     for (final load in _loads) {
-      if (!load.isCompleted) load.complete(const Duration(seconds: 3));
+      if (!load.completer.isCompleted) {
+        _source = load.source;
+        load.completer.complete(const Duration(seconds: 3));
+      }
     }
+  }
+
+  /// Emits a player state transition, such as a source reaching its end.
+  void emitProcessingState(ProcessingState state) {
+    _processingStates.add(state);
   }
 
   @override
@@ -99,11 +114,12 @@ class FakeAudioPlayer extends AudioPlayer {
       Stream<PlaybackEvent>.empty();
 
   @override
-  Stream<ProcessingState> get processingStateStream =>
-      Stream<ProcessingState>.empty();
+  Stream<ProcessingState> get processingStateStream => _processingStates.stream;
+
+  bool _playing = false;
 
   @override
-  bool get playing => false;
+  bool get playing => _playing;
 
   @override
   ProcessingState get processingState => ProcessingState.ready;
@@ -126,20 +142,30 @@ class FakeAudioPlayer extends AudioPlayer {
     dynamic tag,
   }) {
     loadedUrls.add(url);
+    loadedHeaders.add(
+      Map<String, String>.unmodifiable(headers ?? const <String, String>{}),
+    );
     final pending = _loads.isEmpty ? null : _loads.last;
-    if (pending != null && !pending.isCompleted) {
-      pending.completeError(PlayerInterruptedException('Loading interrupted'));
+    if (pending != null && !pending.completer.isCompleted) {
+      pending.completer.completeError(
+        PlayerInterruptedException('Loading interrupted'),
+      );
     }
-    _source = AudioSource.uri(Uri.parse(url));
+    final source = AudioSource.uri(Uri.parse(url));
+    if (failOnceUrls.remove(url)) {
+      return Future<Duration?>.error(
+        PlayerException(403, 'Response code: 403', null),
+      );
+    }
     final failure = failLoadsWith;
     if (failure != null) {
       return Future<Duration?>.error(
         PlayerException(failure, 'Source error', null),
       );
     }
-    final load = Completer<Duration?>();
+    final load = (source: source, completer: Completer<Duration?>());
     _loads.add(load);
-    return load.future;
+    return load.completer.future;
   }
 
   @override
@@ -159,13 +185,29 @@ class FakeAudioPlayer extends AudioPlayer {
   @override
   Future<void> play() async {
     playCount++;
+    _playing = true;
+    await playCompleter?.future;
   }
 
   @override
-  Future<void> pause() async {}
+  Future<void> pause() async {
+    _playing = false;
+  }
 
   @override
-  Future<void> stop() async {}
+  Future<void> stop() async {
+    stopCount++;
+    _playing = false;
+    _source = null;
+    for (final load in _loads) {
+      if (!load.completer.isCompleted) {
+        load.completer.completeError(
+          PlayerInterruptedException('Loading interrupted'),
+        );
+      }
+    }
+    _processingStates.add(ProcessingState.idle);
+  }
 
   @override
   Future<void> seek(Duration? position, {int? index}) async {

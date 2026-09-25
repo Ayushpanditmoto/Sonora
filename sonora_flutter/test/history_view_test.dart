@@ -45,12 +45,14 @@ void main() {
         (widget) => widget is TrackTile && widget.track.id == 'c1',
       ),
     );
+    player.finishLoad();
     await tester.pumpAndSettle();
     await tester.tap(
       find.byWidgetPredicate(
         (widget) => widget is TrackTile && widget.track.id == 'c2',
       ),
     );
+    player.finishLoad();
     await tester.pumpAndSettle();
 
     // Home shows the latest play, newest first.

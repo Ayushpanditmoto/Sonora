@@ -1,16 +1,18 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui';
 
 import 'package:audio_service/audio_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../player/media_item_codec.dart';
 import '../player/sonora_audio_handler.dart';
 import '../services/download_store.dart';
 import '../services/music_api.dart';
+import '../services/youtube_api.dart';
 import 'shimmer.dart';
 import 'sonora_theme.dart';
 
@@ -178,12 +180,459 @@ class RecentStore extends ChangeNotifier {
 
 void playAndRemember(WidgetRef ref, MediaItem track, {List<MediaItem>? queue}) {
   ref.read(recentStoreProvider).add(track);
-  final handler = ref.read(audioHandlerProvider);
-  // Playing from a collection or a list replaces the queue, so next and
-  // previous keep walking that list instead of the home catalogue.
-  if (queue != null && queue.isNotEmpty) unawaited(handler.loadQueue(queue));
-  // Fire and forget: playback interruptions are handled inside the handler.
-  unawaited(handler.playTrack(track));
+  // Queue replacement and track selection are one operation. Starting them as
+  // separate fire-and-forget calls allowed a completion or retry in between to
+  // move the queue index before the requested track had begun loading.
+  unawaited(ref.read(audioHandlerProvider).playTrack(track, queue: queue));
+}
+
+const _sonoraGitHubUrl = 'https://github.com/Ayushpanditmoto';
+
+const _drawerDestinations = <({Icon icon, Icon selectedIcon, String label})>[
+  (
+    icon: Icon(Icons.home_outlined),
+    selectedIcon: Icon(Icons.home_rounded),
+    label: 'Home',
+  ),
+  (
+    icon: Icon(Icons.search_rounded),
+    selectedIcon: Icon(Icons.manage_search_rounded),
+    label: 'Search',
+  ),
+  (
+    icon: Icon(Icons.library_music_outlined),
+    selectedIcon: Icon(Icons.library_music_rounded),
+    label: 'Library',
+  ),
+];
+
+/// App-wide navigation and project attribution.
+class AppDrawer extends StatelessWidget {
+  const AppDrawer({
+    required this.selectedIndex,
+    required this.onDestinationSelected,
+    super.key,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onDestinationSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Drawer(
+      width: math.min(332.0, MediaQuery.sizeOf(context).width * 0.88),
+      backgroundColor: SonoraColors.background,
+      clipBehavior: Clip.antiAlias,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.horizontal(right: Radius.circular(24)),
+      ),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _DrawerHeader(onClose: () => Navigator.of(context).pop()),
+              const _DrawerSectionLabel(label: 'DISCOVER'),
+              for (final (index, destination) in _drawerDestinations.indexed)
+                _DrawerNavigationItem(
+                  key: ValueKey('drawer-${destination.label.toLowerCase()}'),
+                  label: destination.label,
+                  icon: index == selectedIndex
+                      ? destination.selectedIcon
+                      : destination.icon,
+                  selected: index == selectedIndex,
+                  onTap: () {
+                    onDestinationSelected(index);
+                    Navigator.of(context).pop();
+                  },
+                ),
+              const _DrawerSectionLabel(label: 'PROJECT'),
+              _GitHubCard(
+                key: const ValueKey('sonora-github-link'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  unawaited(
+                    launchUrl(
+                      Uri.parse(_sonoraGitHubUrl),
+                      mode: LaunchMode.externalApplication,
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 24),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(22, 0, 22, 20),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.favorite_rounded,
+                      size: 14,
+                      color: SonoraColors.coral,
+                    ),
+                    SizedBox(width: 7),
+                    Expanded(
+                      child: Text(
+                        'Open-source music for everyone',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: SonoraColors.muted,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DrawerHeader extends StatelessWidget {
+  const _DrawerHeader({required this.onClose});
+
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 248,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1D2B23), Color(0xFF121614)],
+        ),
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: -48,
+            top: -54,
+            child: Container(
+              width: 156,
+              height: 156,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: SonoraColors.green.withValues(alpha: 0.09),
+              ),
+            ),
+          ),
+          Positioned(
+            right: 44,
+            bottom: -64,
+            child: Container(
+              width: 126,
+              height: 126,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: SonoraColors.lilac.withValues(alpha: 0.07),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(22, 18, 14, 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: SonoraColors.green,
+                        borderRadius: BorderRadius.circular(13),
+                      ),
+                      child: const Icon(
+                        Icons.graphic_eq_rounded,
+                        color: Colors.black,
+                        size: 25,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'SONORA',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.4,
+                              color: SonoraColors.green,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'YOUR MUSIC, YOUR SPACE',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.1,
+                              color: SonoraColors.muted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Close menu',
+                      onPressed: onClose,
+                      icon: const Icon(Icons.close_rounded, size: 20),
+                      color: SonoraColors.muted,
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                const Text(
+                  'Find your next\nfavorite sound.',
+                  style: TextStyle(
+                    fontSize: 27,
+                    height: 1.05,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.4,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.22),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(
+                      color: SonoraColors.green.withValues(alpha: 0.18),
+                    ),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: SonoraColors.green,
+                          shape: BoxShape.circle,
+                        ),
+                        child: SizedBox.square(dimension: 6),
+                      ),
+                      SizedBox(width: 7),
+                      Text(
+                        'OPEN SOURCE',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.1,
+                          color: SonoraColors.green,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DrawerSectionLabel extends StatelessWidget {
+  const _DrawerSectionLabel({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.4,
+              color: SonoraColors.muted,
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(child: Divider(height: 1, color: Color(0xFF2A302C))),
+        ],
+      ),
+    );
+  }
+}
+
+class _DrawerNavigationItem extends StatelessWidget {
+  const _DrawerNavigationItem({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+    super.key,
+  });
+
+  final String label;
+  final Icon icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+      child: Material(
+        color: selected ? const Color(0xFF213129) : Colors.transparent,
+        borderRadius: BorderRadius.circular(15),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(15),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? SonoraColors.green.withValues(alpha: 0.14)
+                        : SonoraColors.surfaceHigh,
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: Icon(
+                    icon.icon,
+                    size: 20,
+                    color: selected ? SonoraColors.green : SonoraColors.muted,
+                  ),
+                ),
+                const SizedBox(width: 13),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                    color: selected ? SonoraColors.text : SonoraColors.muted,
+                  ),
+                ),
+                const Spacer(),
+                if (selected)
+                  Container(
+                    width: 4,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: SonoraColors.green,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GitHubCard extends StatelessWidget {
+  const _GitHubCard({required this.onTap, super.key});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Material(
+        color: SonoraColors.surfaceHigh,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: Container(
+            padding: const EdgeInsets.all(15),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFF303832)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: SonoraColors.green.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  child: const Icon(
+                    Icons.code_rounded,
+                    color: SonoraColors.green,
+                    size: 23,
+                  ),
+                ),
+                const SizedBox(width: 13),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Made by Ayush Pandit',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      SizedBox(height: 3),
+                      Text(
+                        'github.com/Ayushpanditmoto',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: SonoraColors.muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  Icons.arrow_outward_rounded,
+                  size: 18,
+                  color: SonoraColors.muted,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Opens the app drawer from a page-specific custom header.
+class _DrawerButton extends StatelessWidget {
+  const _DrawerButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Builder(
+      builder: (context) => IconButton.filledTonal(
+        tooltip: 'Open menu',
+        onPressed: Scaffold.of(context).openDrawer,
+        style: IconButton.styleFrom(
+          backgroundColor: SonoraColors.surfaceHigh,
+          foregroundColor: SonoraColors.text,
+        ),
+        icon: const Icon(Icons.menu_rounded),
+      ),
+    );
+  }
 }
 
 class AppShell extends ConsumerStatefulWidget {
@@ -196,12 +645,26 @@ class AppShell extends ConsumerStatefulWidget {
 class _AppShellState extends ConsumerState<AppShell> {
   int _index = 0;
 
+  void _selectTab(int index) {
+    if (index == _index) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() => _index = index);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: AppDrawer(
+        selectedIndex: _index,
+        onDestinationSelected: _selectTab,
+      ),
       body: IndexedStack(
         index: _index,
-        children: const [HomeView(), SearchView(), LibraryView()],
+        children: [
+          const HomeView(),
+          SearchView(isActive: _index == 1),
+          const LibraryView(),
+        ],
       ),
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
@@ -213,7 +676,7 @@ class _AppShellState extends ConsumerState<AppShell> {
           ),
           NavigationBar(
             selectedIndex: _index,
-            onDestinationSelected: (value) => setState(() => _index = value),
+            onDestinationSelected: _selectTab,
             destinations: const [
               NavigationDestination(
                 icon: Icon(Icons.home_outlined),
@@ -608,11 +1071,11 @@ class _TopBar extends StatelessWidget {
           child: const Icon(Icons.graphic_eq_rounded, color: Colors.black),
         ),
         const SizedBox(width: 12),
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              const Text(
                 'SONORA',
                 style: TextStyle(
                   fontSize: 12,
@@ -620,19 +1083,18 @@ class _TopBar extends StatelessWidget {
                   color: SonoraColors.green,
                 ),
               ),
-              SizedBox(height: 2),
+              const SizedBox(height: 2),
               Text(
-                'Good evening, Ayush',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                greetingFor(DateTime.now()),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ],
           ),
         ),
-        IconButton.filledTonal(
-          tooltip: 'Notifications',
-          onPressed: () {},
-          icon: const Icon(Icons.notifications_none_rounded, size: 21),
-        ),
+        const _DrawerButton(),
       ],
     );
   }
@@ -1540,7 +2002,9 @@ class _InlineRetry extends StatelessWidget {
 }
 
 class SearchView extends ConsumerStatefulWidget {
-  const SearchView({super.key});
+  const SearchView({super.key, this.isActive = true});
+
+  final bool isActive;
 
   @override
   ConsumerState<SearchView> createState() => _SearchViewState();
@@ -1550,10 +2014,21 @@ class _SearchViewState extends ConsumerState<SearchView> {
   String query = '';
   Timer? _debounce;
   int _resultTab = 0;
+  final FocusNode _searchFocus = FocusNode();
+
+  @override
+  void didUpdateWidget(covariant SearchView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isActive && !widget.isActive) {
+      _searchFocus.unfocus();
+    }
+  }
 
   @override
   void dispose() {
     _debounce?.cancel();
+    _searchFocus.unfocus();
+    _searchFocus.dispose();
     super.dispose();
   }
 
@@ -1601,6 +2076,34 @@ class _SearchViewState extends ConsumerState<SearchView> {
     );
   }
 
+  Widget _youtubeResults(AsyncValue<List<MediaItem>> request) {
+    if (request.isLoading) return const _SearchSkeletonSection();
+    if (request.hasError) {
+      return _SearchErrorSection(
+        title: 'YouTube',
+        onRetry: () => ref.invalidate(youtubeSearchResultsProvider(query)),
+      );
+    }
+    final tracks = request.value ?? const <MediaItem>[];
+    if (tracks.isEmpty) {
+      return const _SearchCategoryEmpty(title: 'YouTube videos');
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionHeader(title: 'YouTube'),
+        const SizedBox(height: 4),
+        const Text(
+          'Download only videos you own or have permission to save.',
+          style: TextStyle(fontSize: 11, color: SonoraColors.muted),
+        ),
+        const SizedBox(height: 10),
+        ...tracks.map((track) => TrackTile(track: track, queue: tracks)),
+        const SizedBox(height: 28),
+      ],
+    );
+  }
+
   Widget _collectionResults(
     String title,
     CollectionKind kind,
@@ -1635,31 +2138,59 @@ class _SearchViewState extends ConsumerState<SearchView> {
     );
   }
 
-  Widget _selectedResults(
-    AsyncValue<List<MediaItem>> songs,
-    AsyncValue<List<MusicCollection>> albums,
-    AsyncValue<List<MusicCollection>> artists,
-    AsyncValue<List<MusicCollection>> playlists,
-  ) {
+  Widget _selectedResults({
+    required bool youtubeAvailable,
+    required AsyncValue<List<MediaItem>>? songs,
+    required AsyncValue<List<MusicCollection>>? albums,
+    required AsyncValue<List<MusicCollection>>? artists,
+    required AsyncValue<List<MusicCollection>>? playlists,
+    required AsyncValue<List<MediaItem>>? youtube,
+  }) {
+    if (!youtubeAvailable) {
+      return switch (_resultTab) {
+        0 => _songResults(songs!),
+        1 => _collectionResults('Albums', CollectionKind.album, albums!),
+        2 => _collectionResults(
+          'Artists',
+          CollectionKind.artist,
+          artists!,
+          circular: true,
+        ),
+        _ => _collectionResults(
+          'Playlists',
+          CollectionKind.playlist,
+          playlists!,
+        ),
+      };
+    }
     return switch (_resultTab) {
-      0 => _songResults(songs),
-      1 => _collectionResults('Albums', CollectionKind.album, albums),
-      2 => _collectionResults(
+      0 => _songResults(songs!),
+      1 => _youtubeResults(youtube!),
+      2 => _collectionResults('Albums', CollectionKind.album, albums!),
+      3 => _collectionResults(
         'Artists',
         CollectionKind.artist,
-        artists,
+        artists!,
         circular: true,
       ),
-      3 => _collectionResults('Playlists', CollectionKind.playlist, playlists),
-      _ => _songResults(songs),
+      _ => _collectionResults('Playlists', CollectionKind.playlist, playlists!),
     };
   }
 
   @override
   Widget build(BuildContext context) {
     final hasQuery = query.isNotEmpty;
-    final songs = hasQuery ? ref.watch(searchResultsProvider(query)) : null;
-    final albums = hasQuery
+    final youtubeAvailable = ref.watch(youtubeSearchAvailableProvider);
+    final albumTab = youtubeAvailable ? 2 : 1;
+    final artistTab = youtubeAvailable ? 3 : 2;
+    final playlistTab = youtubeAvailable ? 4 : 3;
+    final songs = hasQuery && _resultTab == 0
+        ? ref.watch(searchResultsProvider(query))
+        : null;
+    final youtube = hasQuery && youtubeAvailable && _resultTab == 1
+        ? ref.watch(youtubeSearchResultsProvider(query))
+        : null;
+    final albums = hasQuery && _resultTab == albumTab
         ? ref.watch(
             searchCollectionsProvider((
               query: query,
@@ -1667,7 +2198,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
             )),
           )
         : null;
-    final artists = hasQuery
+    final artists = hasQuery && _resultTab == artistTab
         ? ref.watch(
             searchCollectionsProvider((
               query: query,
@@ -1675,7 +2206,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
             )),
           )
         : null;
-    final playlists = hasQuery
+    final playlists = hasQuery && _resultTab == playlistTab
         ? ref.watch(
             searchCollectionsProvider((
               query: query,
@@ -1683,26 +2214,42 @@ class _SearchViewState extends ConsumerState<SearchView> {
             )),
           )
         : null;
-    final hasErrors =
-        songs?.hasError == true ||
-        albums?.hasError == true ||
-        artists?.hasError == true ||
-        playlists?.hasError == true;
+    final selectedRequest = youtubeAvailable
+        ? switch (_resultTab) {
+            0 => songs,
+            1 => youtube,
+            2 => albums,
+            3 => artists,
+            _ => playlists,
+          }
+        : switch (_resultTab) {
+            0 => songs,
+            1 => albums,
+            2 => artists,
+            _ => playlists,
+          };
     final allSettled =
         hasQuery &&
-        songs?.isLoading == false &&
-        albums?.isLoading == false &&
-        artists?.isLoading == false &&
-        playlists?.isLoading == false &&
-        !hasErrors;
-    final hasResults =
-        (songs?.value?.isNotEmpty ?? false) ||
-        (albums?.value?.isNotEmpty ?? false) ||
-        (artists?.value?.isNotEmpty ?? false) ||
-        (playlists?.value?.isNotEmpty ?? false);
+        selectedRequest?.isLoading == false &&
+        selectedRequest?.hasError != true;
+    final hasResults = selectedRequest?.value?.isNotEmpty ?? false;
+    final noResultName = youtubeAvailable
+        ? switch (_resultTab) {
+            0 => 'songs',
+            1 => 'YouTube videos',
+            2 => 'albums',
+            3 => 'artists',
+            _ => 'playlists',
+          }
+        : switch (_resultTab) {
+            0 => 'songs',
+            1 => 'albums',
+            2 => 'artists',
+            _ => 'playlists',
+          };
 
     return DefaultTabController(
-      length: 4,
+      length: youtubeAvailable ? 5 : 4,
       child: PageFrame(
         child: CustomScrollView(
           key: const PageStorageKey('search'),
@@ -1711,31 +2258,50 @@ class _SearchViewState extends ConsumerState<SearchView> {
               padding: const EdgeInsets.fromLTRB(20, 22, 20, 28),
               sliver: SliverList.list(
                 children: [
-                  Text(
-                    'Search Sonora',
-                    style: Theme.of(context).textTheme.displaySmall,
+                  Row(
+                    children: [
+                      const _DrawerButton(),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          'Search Sonora',
+                          style: Theme.of(context).textTheme.headlineMedium,
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 20),
                   TextField(
+                    focusNode: _searchFocus,
                     textInputAction: TextInputAction.search,
                     onChanged: _search,
-                    decoration: const InputDecoration(
-                      hintText: 'Songs, albums, artists, playlists',
-                      prefixIcon: Icon(Icons.search_rounded),
+                    decoration: InputDecoration(
+                      hintText: youtubeAvailable
+                          ? 'Songs, YouTube, albums, artists, playlists'
+                          : 'Songs, albums, artists, playlists',
+                      prefixIcon: const Icon(Icons.search_rounded),
                     ),
                   ),
                   const SizedBox(height: 28),
                   if (!hasQuery)
-                    const _SearchPrompt()
+                    _SearchPrompt(showYouTube: youtubeAvailable)
                   else ...[
                     _SearchTabs(
+                      showYouTube: youtubeAvailable,
                       onSelected: (index) => setState(() => _resultTab = index),
                     ),
                     const SizedBox(height: 16),
                     if (allSettled && !hasResults)
-                      const _NoSearchResults()
+                      _NoSearchResults(itemName: noResultName)
                     else
-                      _selectedResults(songs!, albums!, artists!, playlists!),
+                      _selectedResults(
+                        youtubeAvailable: youtubeAvailable,
+                        songs: songs,
+                        albums: albums,
+                        artists: artists,
+                        playlists: playlists,
+                        youtube: youtube,
+                      ),
                   ],
                 ],
               ),
@@ -1748,7 +2314,9 @@ class _SearchViewState extends ConsumerState<SearchView> {
 }
 
 class _SearchPrompt extends StatelessWidget {
-  const _SearchPrompt();
+  const _SearchPrompt({required this.showYouTube});
+
+  final bool showYouTube;
 
   @override
   Widget build(BuildContext context) {
@@ -1758,8 +2326,8 @@ class _SearchPrompt extends StatelessWidget {
         children: [
           const Icon(Icons.search_rounded, size: 40, color: SonoraColors.muted),
           const SizedBox(height: 14),
-          const Text(
-            'Search for songs, albums, artists, and playlists',
+          Text(
+            showYouTube ? 'Search songs and YouTube' : 'Search songs',
             textAlign: TextAlign.center,
             style: TextStyle(color: SonoraColors.muted),
           ),
@@ -1770,15 +2338,17 @@ class _SearchPrompt extends StatelessWidget {
 }
 
 class _NoSearchResults extends StatelessWidget {
-  const _NoSearchResults();
+  const _NoSearchResults({required this.itemName});
+
+  final String itemName;
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 72),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 72),
       child: Center(
         child: Text(
-          'No music found. Try a different search.',
+          'No $itemName found. Try a different search.',
           style: TextStyle(color: SonoraColors.muted),
         ),
       ),
@@ -1787,8 +2357,9 @@ class _NoSearchResults extends StatelessWidget {
 }
 
 class _SearchTabs extends StatelessWidget {
-  const _SearchTabs({required this.onSelected});
+  const _SearchTabs({required this.onSelected, this.showYouTube = false});
 
+  final bool showYouTube;
   final ValueChanged<int> onSelected;
 
   @override
@@ -1797,11 +2368,12 @@ class _SearchTabs extends StatelessWidget {
       isScrollable: true,
       tabAlignment: TabAlignment.start,
       onTap: onSelected,
-      tabs: const [
-        Tab(text: 'Songs'),
-        Tab(text: 'Albums'),
-        Tab(text: 'Artists'),
-        Tab(text: 'Playlists'),
+      tabs: [
+        const Tab(text: 'Songs'),
+        if (showYouTube) const Tab(text: 'YouTube'),
+        const Tab(text: 'Albums'),
+        const Tab(text: 'Artists'),
+        const Tab(text: 'Playlists'),
       ],
     );
   }
@@ -1895,10 +2467,12 @@ class _LibraryViewState extends ConsumerState<LibraryView> {
                 children: [
                   Row(
                     children: [
+                      const _DrawerButton(),
+                      const SizedBox(width: 4),
                       Expanded(
                         child: Text(
                           'Your library',
-                          style: Theme.of(context).textTheme.displaySmall,
+                          style: Theme.of(context).textTheme.headlineMedium,
                         ),
                       ),
                       IconButton(
@@ -1958,7 +2532,9 @@ class _DownloadsTab extends ConsumerWidget {
       listenable: store,
       builder: (context, _) {
         final tracks = store.tracks;
-        if (tracks.isEmpty && store.activeDownloadCount == 0) {
+        final activeTracks = store.activeTracks;
+        final hasActive = activeTracks.isNotEmpty;
+        if (tracks.isEmpty && !hasActive) {
           return const _LibraryEmpty(
             icon: Icons.download_rounded,
             message:
@@ -1966,20 +2542,10 @@ class _DownloadsTab extends ConsumerWidget {
           );
         }
         if (tracks.isEmpty) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '${_plural(store.activeDownloadCount, 'download')} • ${_formatSize(store.activeBytes)} received',
-                style: const TextStyle(
-                  color: SonoraColors.green,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 12),
-              const LinearProgressIndicator(),
-            ],
+          return _ActiveDownloads(
+            store: store,
+            tracks: activeTracks,
+            queue: activeTracks,
           );
         }
         return Column(
@@ -2001,16 +2567,14 @@ class _DownloadsTab extends ConsumerWidget {
                 ),
               ],
             ),
-            if (store.activeDownloadCount > 0) ...[
-              const SizedBox(height: 4),
-              Text(
-                '${_plural(store.activeDownloadCount, 'download')} • ${_formatSize(store.activeBytes)} received',
-                style: const TextStyle(
-                  color: SonoraColors.green,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
+            if (hasActive) ...[
+              const SizedBox(height: 10),
+              _ActiveDownloads(
+                store: store,
+                tracks: activeTracks,
+                queue: tracks,
               ),
+              const SizedBox(height: 10),
             ],
             const SizedBox(height: 10),
             FilledButton.icon(
@@ -2020,14 +2584,7 @@ class _DownloadsTab extends ConsumerWidget {
               label: const Text('Play all'),
             ),
             const SizedBox(height: 12),
-            ...tracks.map(
-              (track) => _SwipeToRemove(
-                key: ValueKey(track.id),
-                onRemove: () =>
-                    unawaited(_confirmRemoveDownload(context, store, track)),
-                child: TrackTile(track: track, queue: tracks),
-              ),
-            ),
+            ...tracks.map((track) => TrackTile(track: track, queue: tracks)),
           ],
         );
       },
@@ -2105,7 +2662,7 @@ class _LikedSongsTab extends ConsumerWidget {
         if (tracks.isEmpty) {
           return const _LibraryEmpty(
             icon: Icons.favorite_border_rounded,
-            message: 'Tap the heart on a track to save it.',
+            message: 'Open a track and tap the heart in the player to save it.',
           );
         }
         return Column(
@@ -2156,6 +2713,108 @@ class _LibraryEmpty extends StatelessWidget {
   }
 }
 
+/// The active part of the Downloads screen. It deliberately uses ordinary
+/// rows, not [Dismissible]: a horizontal swipe must never remove a download
+/// before the user has pressed the explicit Remove control and confirmed it.
+class _ActiveDownloads extends StatelessWidget {
+  const _ActiveDownloads({
+    required this.store,
+    required this.tracks,
+    required this.queue,
+  });
+
+  final DownloadStore store;
+  final List<MediaItem> tracks;
+  final List<MediaItem> queue;
+
+  @override
+  Widget build(BuildContext context) {
+    if (tracks.isEmpty) return const SizedBox.shrink();
+    final heading = tracks.length == 1
+        ? 'Downloading ${tracks.first.title}'
+        : 'Downloading ${tracks.length} tracks';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(
+              Icons.downloading_rounded,
+              size: 18,
+              color: SonoraColors.green,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                heading,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: SonoraColors.green,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Text(
+              '${_plural(tracks.length, 'download')} • ${_formatSize(store.activeBytes)} received',
+              style: const TextStyle(color: SonoraColors.muted, fontSize: 11),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        ...tracks.map(
+          (track) => Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TrackTile(track: track, queue: queue),
+                Padding(
+                  padding: const EdgeInsets.only(left: 62, right: 8),
+                  child: _ActiveDownloadProgress(store: store, track: track),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ActiveDownloadProgress extends StatelessWidget {
+  const _ActiveDownloadProgress({required this.store, required this.track});
+
+  final DownloadStore store;
+  final MediaItem track;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = store.progressFor(track.id);
+    final indeterminate = store.isProgressIndeterminate(track.id);
+    return Row(
+      children: [
+        Expanded(
+          child: LinearProgressIndicator(
+            value: indeterminate ? null : progress,
+            minHeight: 2,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          indeterminate ? 'Preparing…' : '${(progress! * 100).round()}%',
+          style: const TextStyle(
+            color: SonoraColors.green,
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// Swipes a row away to remove a single item, like clearing one track from the
 /// history without wiping the rest of it.
 class _SwipeToRemove extends StatelessWidget {
@@ -2189,7 +2848,11 @@ class _SwipeToRemove extends StatelessWidget {
   }
 }
 
-Future<void> _confirmRemoveDownload(
+/// Deletes a download only after [context] has confirmed the action.
+///
+/// This is used by the row's explicit Remove control. A swipe is intentionally
+/// not a delete gesture: the row remains until the user confirms here.
+Future<void> _removeDownload(
   BuildContext context,
   DownloadStore store,
   MediaItem track,
@@ -2279,6 +2942,9 @@ class _DownloadsView extends ConsumerWidget {
       listenable: store,
       builder: (context, _) {
         final tracks = store.tracks;
+        final activeTracks = store.activeTracks;
+        final hasActive = activeTracks.isNotEmpty;
+        final hasAny = tracks.isNotEmpty || hasActive;
         return Scaffold(
           body: SafeArea(
             bottom: false,
@@ -2310,9 +2976,14 @@ class _DownloadsView extends ConsumerWidget {
                                   ),
                                   const SizedBox(height: 3),
                                   Text(
-                                    tracks.isEmpty
-                                        ? 'Nothing downloaded yet'
-                                        : '${_plural(tracks.length, 'track')} • ${_formatSize(store.totalBytes)}',
+                                    hasAny
+                                        ? [
+                                            if (tracks.isNotEmpty)
+                                              '${_plural(tracks.length, 'track')} downloaded • ${_formatSize(store.totalBytes)}',
+                                            if (hasActive)
+                                              '${_plural(activeTracks.length, 'download')} in progress',
+                                          ].join(' • ')
+                                        : 'Nothing downloaded yet',
                                     style: const TextStyle(
                                       color: SonoraColors.muted,
                                       fontSize: 12,
@@ -2327,52 +2998,52 @@ class _DownloadsView extends ConsumerWidget {
                     ),
                     SliverPadding(
                       padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
-                      sliver: tracks.isEmpty
+                      sliver: !hasAny
                           ? const SliverToBoxAdapter(child: _downloadsEmpty)
                           : SliverList.list(
                               children: [
-                                Row(
-                                  children: [
-                                    FilledButton.icon(
-                                      onPressed: () => playAndRemember(
-                                        ref,
-                                        tracks.first,
-                                        queue: tracks,
-                                      ),
-                                      icon: const Icon(
-                                        Icons.play_arrow_rounded,
-                                      ),
-                                      label: const Text('Play all'),
-                                    ),
-                                    const Spacer(),
-                                    TextButton.icon(
-                                      onPressed: () =>
-                                          _confirmClear(context, store),
-                                      icon: const Icon(
-                                        Icons.delete_outline_rounded,
-                                        size: 18,
-                                      ),
-                                      label: const Text('Clear'),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                ...tracks.map(
-                                  (track) => _SwipeToRemove(
-                                    key: ValueKey(track.id),
-                                    onRemove: () => unawaited(
-                                      _confirmRemoveDownload(
-                                        context,
-                                        store,
-                                        track,
-                                      ),
-                                    ),
-                                    child: TrackTile(
-                                      track: track,
-                                      queue: tracks,
-                                    ),
+                                if (hasActive) ...[
+                                  _ActiveDownloads(
+                                    store: store,
+                                    tracks: activeTracks,
+                                    queue: tracks.isEmpty
+                                        ? activeTracks
+                                        : tracks,
                                   ),
-                                ),
+                                  const SizedBox(height: 16),
+                                ],
+                                if (tracks.isNotEmpty) ...[
+                                  Row(
+                                    children: [
+                                      FilledButton.icon(
+                                        onPressed: () => playAndRemember(
+                                          ref,
+                                          tracks.first,
+                                          queue: tracks,
+                                        ),
+                                        icon: const Icon(
+                                          Icons.play_arrow_rounded,
+                                        ),
+                                        label: const Text('Play all'),
+                                      ),
+                                      const Spacer(),
+                                      TextButton.icon(
+                                        onPressed: () =>
+                                            _confirmClear(context, store),
+                                        icon: const Icon(
+                                          Icons.delete_outline_rounded,
+                                          size: 18,
+                                        ),
+                                        label: const Text('Clear'),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  ...tracks.map(
+                                    (track) =>
+                                        TrackTile(track: track, queue: tracks),
+                                  ),
+                                ],
                               ],
                             ),
                     ),
@@ -2446,6 +3117,27 @@ void showDownloads(BuildContext context) {
       .push(MaterialPageRoute<void>(builder: (_) => const _DownloadsView()));
 }
 
+/// Formats the API's `playCount` without pretending it is a view count.
+/// Returns null when the endpoint did not provide a usable value.
+String? _playCountText(MediaItem track) {
+  final value = track.extras?['playCount'];
+  final count = switch (value) {
+    final num number when number.isFinite && number >= 0 => number.round(),
+    final String text => int.tryParse(text),
+    _ => null,
+  };
+  if (count == null) return null;
+  if (count >= 1000000) {
+    final millions = count / 1000000;
+    return '${millions.toStringAsFixed(millions.truncateToDouble() == millions ? 0 : 1)}M plays';
+  }
+  if (count >= 1000) {
+    final thousands = count / 1000;
+    return '${thousands.toStringAsFixed(thousands.truncateToDouble() == thousands ? 0 : 1)}K plays';
+  }
+  return '$count plays';
+}
+
 class TrackTile extends ConsumerWidget {
   const TrackTile({required this.track, this.queue, super.key});
 
@@ -2457,63 +3149,72 @@ class TrackTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final store = ref.watch(favoriteStoreProvider);
     final downloads = ref.watch(downloadStoreProvider);
-    return ListenableBuilder(
-      listenable: Listenable.merge([store, downloads]),
-      builder: (context, _) => SizedBox(
-        height: 68,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(6),
-          onTap: () => playAndRemember(ref, track, queue: queue),
-          child: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(5),
-                child: SizedBox(
-                  width: 50,
-                  height: 50,
-                  child: Artwork(path: track.artPath),
-                ),
+    return SizedBox(
+      height: 68,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: () => playAndRemember(ref, track, queue: queue),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(5),
+              child: SizedBox(
+                width: 50,
+                height: 50,
+                child: Artwork(path: track.artPath),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    track.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 4),
+                  _TrackSubtitle(store: downloads, track: track),
+                ],
+              ),
+            ),
+            if (_playCountText(track) case final playCount?) ...[
+              const SizedBox(width: 8),
+              Semantics(
+                key: ValueKey('track-plays-${track.id}'),
+                label: playCount,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      track.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    const Icon(
+                      Icons.headphones_rounded,
+                      size: 13,
+                      color: SonoraColors.muted,
                     ),
-                    const SizedBox(height: 4),
-                    _TrackSubtitle(store: downloads, track: track),
+                    const SizedBox(width: 3),
+                    Text(
+                      playCount,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: SonoraColors.muted,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ],
                 ),
               ),
-              IconButton(
-                tooltip: 'Save track',
-                onPressed: () => store.toggle(track),
-                icon: Icon(
-                  store.contains(track.id)
-                      ? Icons.favorite_rounded
-                      : Icons.favorite_border_rounded,
-                  size: 20,
-                  color: store.contains(track.id)
-                      ? SonoraColors.green
-                      : SonoraColors.muted,
-                ),
-              ),
-              _DownloadButton(store: downloads, track: track),
-              Text(
-                formatDuration(track.duration ?? Duration.zero),
-                style: const TextStyle(fontSize: 11, color: SonoraColors.muted),
-              ),
-              const SizedBox(width: 4),
             ],
-          ),
+            _DownloadButton(store: downloads, track: track),
+            Text(
+              formatDuration(track.duration ?? Duration.zero),
+              style: const TextStyle(fontSize: 11, color: SonoraColors.muted),
+            ),
+            const SizedBox(width: 4),
+          ],
         ),
       ),
     );
@@ -2529,18 +3230,25 @@ class _TrackSubtitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final error = store.errorFor(track.id);
-    final subtitle = Text(
-      error ?? '${track.artist}  •  ${track.album}',
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: TextStyle(
-        fontSize: 12,
-        color: error == null ? SonoraColors.muted : SonoraColors.coral,
-        fontWeight: error == null ? FontWeight.normal : FontWeight.w600,
-      ),
+    return ListenableBuilder(
+      listenable: store,
+      builder: (context, _) {
+        final error = store.errorFor(track.id);
+        final subtitle = Text(
+          error ?? '${track.artist}  •  ${track.album}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 12,
+            color: error == null ? SonoraColors.muted : SonoraColors.coral,
+            fontWeight: error == null ? FontWeight.normal : FontWeight.w600,
+          ),
+        );
+        return error == null
+            ? subtitle
+            : Tooltip(message: error, child: subtitle);
+      },
     );
-    return error == null ? subtitle : Tooltip(message: error, child: subtitle);
   }
 }
 
@@ -2557,65 +3265,69 @@ class _DownloadButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final progress = store.progressFor(track.id);
-    if (progress != null) {
-      final indeterminate = store.isProgressIndeterminate(track.id);
-      final message = indeterminate
-          ? 'Downloading'
-          : 'Downloading ${(progress * 100).round()}%';
-      return Tooltip(
-        message: message,
-        child: Semantics(
-          label: message,
-          liveRegion: true,
-          child: SizedBox(
-            width: 40,
-            height: 40,
-            child: Center(
-              child: SizedBox.square(
-                dimension: 16,
-                child: CircularProgressIndicator(
-                  value: indeterminate ? null : progress,
-                  strokeWidth: 2,
+    return ListenableBuilder(
+      listenable: store,
+      builder: (context, _) {
+        final progress = store.progressFor(track.id);
+        if (progress != null) {
+          final indeterminate = store.isProgressIndeterminate(track.id);
+          final message = indeterminate
+              ? 'Downloading'
+              : 'Downloading ${(progress * 100).round()}%';
+          return Tooltip(
+            message: message,
+            child: Semantics(
+              label: message,
+              liveRegion: true,
+              child: SizedBox(
+                width: 40,
+                height: 40,
+                child: Center(
+                  child: SizedBox.square(
+                    dimension: 16,
+                    child: CircularProgressIndicator(
+                      value: indeterminate ? null : progress,
+                      strokeWidth: 2,
+                    ),
+                  ),
                 ),
               ),
             ),
+          );
+        }
+        if (store.contains(track.id)) {
+          return IconButton(
+            tooltip: 'Remove download',
+            onPressed: () => unawaited(_removeDownload(context, store, track)),
+            icon: const Icon(
+              Icons.download_done_rounded,
+              size: 20,
+              color: SonoraColors.green,
+            ),
+          );
+        }
+        final error = store.errorFor(track.id);
+        if (error != null) {
+          return IconButton(
+            tooltip: 'Retry download',
+            onPressed: () => unawaited(store.download(track)),
+            icon: const Icon(
+              Icons.error_outline_rounded,
+              size: 20,
+              color: SonoraColors.coral,
+            ),
+          );
+        }
+        return IconButton(
+          tooltip: 'Download',
+          onPressed: () => unawaited(store.download(track)),
+          icon: const Icon(
+            Icons.arrow_circle_down_outlined,
+            size: 20,
+            color: SonoraColors.muted,
           ),
-        ),
-      );
-    }
-    if (store.contains(track.id)) {
-      return IconButton(
-        tooltip: 'Remove download',
-        onPressed: () =>
-            unawaited(_confirmRemoveDownload(context, store, track)),
-        icon: const Icon(
-          Icons.download_done_rounded,
-          size: 20,
-          color: SonoraColors.green,
-        ),
-      );
-    }
-    final error = store.errorFor(track.id);
-    if (error != null) {
-      return IconButton(
-        tooltip: 'Retry download',
-        onPressed: () => unawaited(store.download(track)),
-        icon: const Icon(
-          Icons.error_outline_rounded,
-          size: 20,
-          color: SonoraColors.coral,
-        ),
-      );
-    }
-    return IconButton(
-      tooltip: 'Download',
-      onPressed: () => unawaited(store.download(track)),
-      icon: const Icon(
-        Icons.arrow_circle_down_outlined,
-        size: 20,
-        color: SonoraColors.muted,
-      ),
+        );
+      },
     );
   }
 }
@@ -2627,12 +3339,17 @@ class MiniPlayer extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final track = ref.watch(currentTrackProvider).value;
     final state = ref.watch(playbackProvider).value;
+    final isLoading =
+        state?.processingState == AudioProcessingState.loading ||
+        state?.processingState == AudioProcessingState.buffering;
     if (track == null) return const SizedBox.shrink();
     final handler = ref.read(audioHandlerProvider);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+    // Playback state changes several times per second. Keeping this row in its
+    // own repaint boundary prevents those small updates from repainting the
+    // navigation bar around it.
+    return RepaintBoundary(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
         child: Material(
           color: const Color(0xF0222623),
           child: InkWell(
@@ -2683,16 +3400,27 @@ class MiniPlayer extends ConsumerWidget {
                     icon: const Icon(Icons.skip_next_rounded),
                   ),
                   IconButton(
-                    tooltip: state?.playing == true ? 'Pause' : 'Play',
-                    onPressed: state?.playing == true
+                    tooltip: isLoading
+                        ? 'Preparing track'
+                        : state?.playing == true
+                        ? 'Pause'
+                        : 'Play',
+                    onPressed: isLoading
+                        ? null
+                        : state?.playing == true
                         ? handler.pause
                         : handler.play,
-                    icon: Icon(
-                      state?.playing == true
-                          ? Icons.pause_rounded
-                          : Icons.play_arrow_rounded,
-                      size: 28,
-                    ),
+                    icon: isLoading
+                        ? const SizedBox.square(
+                            dimension: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(
+                            state?.playing == true
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                            size: 28,
+                          ),
                   ),
                   const SizedBox(width: 6),
                 ],
@@ -2733,9 +3461,11 @@ class _NowPlayingViewState extends ConsumerState<NowPlayingView> {
     final state = ref.watch(playbackProvider).value;
     final position = ref.watch(positionProvider).value ?? Duration.zero;
     if (track == null) return const SizedBox.shrink();
-    final duration = state?.processingState == AudioProcessingState.ready
-        ? (track.duration ?? Duration.zero)
-        : (track.duration ?? Duration.zero);
+    final isLoading =
+        state?.processingState == AudioProcessingState.loading ||
+        state?.processingState == AudioProcessingState.buffering;
+    final isResolving = state?.processingState == AudioProcessingState.loading;
+    final duration = track.duration ?? Duration.zero;
     final max = duration.inMilliseconds
         .toDouble()
         .clamp(1.0, double.infinity)
@@ -2743,6 +3473,7 @@ class _NowPlayingViewState extends ConsumerState<NowPlayingView> {
     final value = position.inMilliseconds.toDouble().clamp(0.0, max).toDouble();
     final handler = ref.read(audioHandlerProvider);
     final store = ref.watch(favoriteStoreProvider);
+    final downloads = ref.watch(downloadStoreProvider);
     final shuffleOn = state?.shuffleMode == AudioServiceShuffleMode.all;
     final repeatMode = state?.repeatMode ?? AudioServiceRepeatMode.none;
     final queued = ref.watch(queueProvider).value?.length ?? 0;
@@ -2844,6 +3575,28 @@ class _NowPlayingViewState extends ConsumerState<NowPlayingView> {
                                       color: SonoraColors.muted,
                                     ),
                                   ),
+                                  if (_playCountText(track)
+                                      case final playCount?) ...[
+                                    const SizedBox(height: 6),
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.headphones_rounded,
+                                          size: 14,
+                                          color: SonoraColors.muted,
+                                        ),
+                                        const SizedBox(width: 5),
+                                        Text(
+                                          playCount,
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            color: SonoraColors.muted,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),
@@ -2859,6 +3612,7 @@ class _NowPlayingViewState extends ConsumerState<NowPlayingView> {
                                     : SonoraColors.text,
                               ),
                             ),
+                            _DownloadButton(store: downloads, track: track),
                           ],
                         ),
                       ),
@@ -2868,9 +3622,11 @@ class _NowPlayingViewState extends ConsumerState<NowPlayingView> {
                         child: Slider(
                           value: value,
                           max: max,
-                          onChanged: (next) => handler.seek(
-                            Duration(milliseconds: next.round()),
-                          ),
+                          onChanged: isResolving
+                              ? null
+                              : (next) => handler.seek(
+                                  Duration(milliseconds: next.round()),
+                                ),
                         ),
                       ),
                       Row(
@@ -2924,16 +3680,30 @@ class _NowPlayingViewState extends ConsumerState<NowPlayingView> {
                               foregroundColor: Colors.black,
                               minimumSize: const Size(68, 68),
                             ),
-                            tooltip: state?.playing == true ? 'Pause' : 'Play',
-                            onPressed: state?.playing == true
+                            tooltip: isLoading
+                                ? 'Preparing track'
+                                : state?.playing == true
+                                ? 'Pause'
+                                : 'Play',
+                            onPressed: isLoading
+                                ? null
+                                : state?.playing == true
                                 ? handler.pause
                                 : handler.play,
-                            icon: Icon(
-                              state?.playing == true
-                                  ? Icons.pause_rounded
-                                  : Icons.play_arrow_rounded,
-                              size: 36,
-                            ),
+                            icon: isLoading
+                                ? const SizedBox.square(
+                                    dimension: 26,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 3,
+                                      color: Colors.black,
+                                    ),
+                                  )
+                                : Icon(
+                                    state?.playing == true
+                                        ? Icons.pause_rounded
+                                        : Icons.play_arrow_rounded,
+                                    size: 36,
+                                  ),
                           ),
                           IconButton(
                             tooltip: 'Next',
@@ -3344,27 +4114,64 @@ class Artwork extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (path.startsWith('http://') || path.startsWith('https://')) {
-      return Image.network(
-        path,
-        fit: fit,
-        width: double.infinity,
-        height: double.infinity,
-        filterQuality: FilterQuality.medium,
-        errorBuilder: (context, error, stackTrace) => Image.asset(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // API artwork is 500 px square, but a track row displays it at about
+        // 50 logical pixels. Decoding the full source for every row wastes
+        // memory and makes image completion contend with scrolling frames.
+        // Derive the decode size from the laid-out artwork and device pixel
+        // ratio so sharp displays still receive enough pixels.
+        int? decodeWidth;
+        if (constraints.maxWidth.isFinite && constraints.maxHeight.isFinite) {
+          final logicalSize = math.min(
+            constraints.maxWidth,
+            constraints.maxHeight,
+          );
+          if (logicalSize > 0) {
+            decodeWidth = math.max(
+              1,
+              (logicalSize * MediaQuery.devicePixelRatioOf(context)).ceil(),
+            );
+          }
+        }
+
+        Widget fallback() => Image.asset(
           'assets/art/neon-rain.png',
           fit: fit,
           width: double.infinity,
           height: double.infinity,
-        ),
-      );
-    }
-    return Image.asset(
-      path,
-      fit: fit,
-      width: double.infinity,
-      height: double.infinity,
-      filterQuality: FilterQuality.medium,
+          cacheWidth: decodeWidth,
+          filterQuality: FilterQuality.low,
+        );
+
+        if (path.startsWith('http://') || path.startsWith('https://')) {
+          return CachedNetworkImage(
+            imageUrl: path,
+            fit: fit,
+            width: double.infinity,
+            height: double.infinity,
+            memCacheWidth: decodeWidth,
+            filterQuality: FilterQuality.low,
+            placeholder: (context, url) =>
+                const ColoredBox(color: SonoraColors.surfaceHigh),
+            errorWidget: (context, url, error) => fallback(),
+            // Loading is background work, not an interaction. Avoiding a
+            // cross-fade also prevents a short opacity layer on every image.
+            placeholderFadeInDuration: Duration.zero,
+            fadeOutDuration: Duration.zero,
+            fadeInDuration: Duration.zero,
+          );
+        }
+        return Image.asset(
+          path,
+          fit: fit,
+          width: double.infinity,
+          height: double.infinity,
+          cacheWidth: decodeWidth,
+          filterQuality: FilterQuality.low,
+          errorBuilder: (context, error, stackTrace) => fallback(),
+        );
+      },
     );
   }
 }

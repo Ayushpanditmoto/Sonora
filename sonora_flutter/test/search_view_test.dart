@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sonora_flutter/services/music_api.dart';
+import 'package:sonora_flutter/services/youtube_api.dart';
 import 'package:sonora_flutter/ui/app_shell.dart';
 import 'package:sonora_flutter/ui/sonora_theme.dart';
 
@@ -16,17 +17,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Search Sonora'), findsOneWidget);
-    expect(
-      find.text('Search for songs, albums, artists, and playlists'),
-      findsOneWidget,
-    );
+    expect(tester.widget<Text>(find.text('Search Sonora')).style?.fontSize, 26);
+    expect(find.text('Search songs and YouTube'), findsOneWidget);
     expect(find.text('Browse moods'), findsNothing);
     expect(find.text('Popular searches'), findsNothing);
   });
 
-  testWidgets('search groups songs, albums, artists, and playlists', (
-    tester,
-  ) async {
+  testWidgets('YouTube is the second Search tab', (tester) async {
     await tester.pumpWidget(_app());
     await tester.pumpAndSettle();
 
@@ -34,40 +31,163 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
 
-    expect(find.widgetWithText(Tab, 'Songs'), findsOneWidget);
-    expect(find.widgetWithText(Tab, 'Albums'), findsOneWidget);
-    expect(find.widgetWithText(Tab, 'Artists'), findsOneWidget);
-    expect(find.widgetWithText(Tab, 'Playlists'), findsOneWidget);
+    final tabs = tester
+        .widgetList<Tab>(find.byType(Tab))
+        .map((tab) => tab.text)
+        .toList();
+    expect(tabs, ['Songs', 'YouTube', 'Albums', 'Artists', 'Playlists']);
     expect(find.text('Search Song'), findsOneWidget);
-    expect(find.text('Search Album'), findsNothing);
+    expect(find.text('YouTube Track'), findsNothing);
+
+    await tester.tap(find.widgetWithText(Tab, 'YouTube'));
+    await tester.pumpAndSettle();
+    expect(find.text('YouTube Track'), findsOneWidget);
+    expect(find.text('Search Song'), findsNothing);
+    expect(
+      find.text('Download only videos you own or have permission to save.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('only the selected Search tab is requested', (tester) async {
+    var songRequests = 0;
+    var youtubeRequests = 0;
+    final collectionRequests = <CollectionKind>[];
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          youtubeSearchAvailableProvider.overrideWithValue(true),
+          searchResultsProvider.overrideWith((ref, query) async {
+            songRequests++;
+            return _songs;
+          }),
+          youtubeSearchResultsProvider.overrideWith((ref, query) async {
+            youtubeRequests++;
+            return _youtube;
+          }),
+          searchCollectionsProvider.overrideWith((ref, key) async {
+            collectionRequests.add(key.kind);
+            return [_album];
+          }),
+        ],
+        child: MaterialApp(
+          theme: SonoraTheme.dark,
+          home: const Scaffold(body: SearchView()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), 'Arijit');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(songRequests, 1);
+    expect(youtubeRequests, 0);
+    expect(collectionRequests, isEmpty);
+
+    await tester.tap(find.widgetWithText(Tab, 'YouTube'));
+    await tester.pumpAndSettle();
+    expect(youtubeRequests, 1);
+    expect(songRequests, 1);
+    expect(collectionRequests, isEmpty);
 
     await tester.tap(find.widgetWithText(Tab, 'Albums'));
     await tester.pumpAndSettle();
-    expect(find.text('Search Album'), findsOneWidget);
-    expect(find.text('Search Song'), findsNothing);
+    expect(collectionRequests, [CollectionKind.album]);
+    expect(songRequests, 1);
+    expect(youtubeRequests, 1);
+  });
 
-    await tester.tap(find.widgetWithText(Tab, 'Artists'));
-    await tester.pumpAndSettle();
-    expect(find.text('Search Artist'), findsOneWidget);
+  testWidgets(
+    'leaving Search releases focus and returning does not reopen it',
+    (tester) async {
+      var searchActive = true;
+      late StateSetter updateSearch;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [youtubeSearchAvailableProvider.overrideWithValue(true)],
+          child: MaterialApp(
+            theme: SonoraTheme.dark,
+            home: StatefulBuilder(
+              builder: (context, setState) {
+                updateSearch = setState;
+                return Scaffold(
+                  body: IndexedStack(
+                    index: searchActive ? 1 : 0,
+                    children: [
+                      const SizedBox.expand(),
+                      SearchView(isActive: searchActive),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(Tab, 'Playlists'));
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      final field = tester.widget<EditableText>(find.byType(EditableText));
+      expect(field.focusNode.hasFocus, isTrue);
+
+      updateSearch(() => searchActive = false);
+      await tester.pump();
+      expect(field.focusNode.hasFocus, isFalse);
+
+      updateSearch(() => searchActive = true);
+      await tester.pump();
+      expect(field.focusNode.hasFocus, isFalse);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    },
+  );
+
+  testWidgets('YouTube results are hidden when the feature is unavailable', (
+    tester,
+  ) async {
+    var youtubeRequests = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          youtubeSearchAvailableProvider.overrideWithValue(false),
+          searchResultsProvider.overrideWith((ref, query) async => _songs),
+          youtubeSearchResultsProvider.overrideWith((ref, query) async {
+            youtubeRequests++;
+            return _youtube;
+          }),
+        ],
+        child: MaterialApp(
+          theme: SonoraTheme.dark,
+          home: const Scaffold(body: SearchView()),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
-    expect(find.text('Search Playlist'), findsOneWidget);
-    expect(find.text('Search Artist'), findsNothing);
+    expect(find.text('Search songs and YouTube'), findsNothing);
+    expect(find.text('Search songs'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'Arijit');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Tab), findsWidgets);
+    expect(find.widgetWithText(Tab, 'YouTube'), findsNothing);
+    expect(youtubeRequests, 0);
+    expect(find.text('YouTube Track'), findsNothing);
+    expect(find.text('Search Song'), findsOneWidget);
   });
 }
 
 Widget _app() {
   return ProviderScope(
     overrides: [
+      youtubeSearchAvailableProvider.overrideWithValue(true),
       searchResultsProvider.overrideWith((ref, query) async => _songs),
-      searchCollectionsProvider.overrideWith(
-        (ref, key) async => switch (key.kind) {
-          CollectionKind.album => [_album],
-          CollectionKind.artist => [_artist],
-          CollectionKind.playlist => [_playlist],
-        },
-      ),
+      youtubeSearchResultsProvider.overrideWith((ref, query) async => _youtube),
     ],
     child: MaterialApp(
       theme: SonoraTheme.dark,
@@ -85,20 +205,20 @@ final _songs = [
   ),
 ];
 
-final _album = _collection('album-1', 'Search Album', CollectionKind.album);
-final _artist = _collection('artist-1', 'Search Artist', CollectionKind.artist);
-final _playlist = _collection(
-  'playlist-1',
-  'Search Playlist',
-  CollectionKind.playlist,
+final _album = MusicCollection(
+  id: 'album-1',
+  name: 'Search Album',
+  imageUrl: _art,
+  subtitle: 'Album',
+  kind: CollectionKind.album,
 );
 
-MusicCollection _collection(String id, String name, CollectionKind kind) {
-  return MusicCollection(
-    id: id,
-    name: name,
-    imageUrl: _art,
-    subtitle: kind.name,
-    kind: kind,
-  );
-}
+final _youtube = [
+  MediaItem(
+    id: 'youtube:video_1',
+    title: 'YouTube Track',
+    artist: 'Creator',
+    album: 'YouTube',
+    extras: const {'source': 'youtube', 'sourceId': 'video_1'},
+  ),
+];
