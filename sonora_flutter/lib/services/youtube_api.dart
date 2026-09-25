@@ -1,5 +1,4 @@
 import 'package:audio_service/audio_service.dart';
-import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
@@ -163,12 +162,6 @@ class YoutubeExplodeGateway implements YouTubeGateway {
   @override
   Future<YouTubeAudioStream> resolveAudio(String videoId) async {
     final youtube = YoutubeExplode();
-    final dio = Dio(
-      BaseOptions(
-        connectTimeout: const Duration(seconds: 6),
-        receiveTimeout: const Duration(seconds: 6),
-      ),
-    );
     try {
       // Do not pass several preferred clients here. Version 3.1.0 probes every
       // supplied client even after another one has succeeded; the iOS client can
@@ -196,38 +189,27 @@ class YoutubeExplodeGateway implements YouTubeGateway {
               headers: youtubeMediaHeaders,
             ),
       ];
-      for (final stream in orderYouTubeAudioStreams(audioOnly)) {
-        if (await _canReadMedia(dio, stream.url)) return stream;
-      }
-      throw const YouTubeAudioUnavailableException();
+      final ordered = orderYouTubeAudioStreams(audioOnly);
+      if (ordered.isEmpty) throw const YouTubeAudioUnavailableException();
+      // The best stream is used without probing it first. Googlevideo answers
+      // an identical request with 200 and then 403 depending only on how much
+      // has been asked of it recently, so a reachability check reports a rate
+      // limit as a dead URL and turns a working video into "unavailable". A
+      // genuinely expired URL is already covered: the downloader re-resolves and
+      // retries on a 403, and a file that is not media is rejected on its
+      // container.
+      return ordered.first;
     } finally {
-      dio.close();
       youtube.close();
     }
   }
 
-  Future<bool> _canReadMedia(Dio dio, Uri url) async {
-    try {
-      // HEAD validates the signed URL without consuming its first media range.
-      // Opening and cancelling a GET can invalidate some short-lived
-      // Googlevideo URLs before ExoPlayer or the downloader receives them.
-      final response = await dio.head<void>(
-        url.toString(),
-        options: Options(headers: youtubeMediaHeaders),
-      );
-      return response.statusCode == 200 || response.statusCode == 206;
-    } on DioException {
-      return false;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  YouTubeAudioFormat? _formatFor(StreamContainer container) => switch (container) {
-    StreamContainer.mp4 => YouTubeAudioFormat.m4a,
-    StreamContainer.webM => YouTubeAudioFormat.webm,
-    _ => null,
-  };
+  YouTubeAudioFormat? _formatFor(StreamContainer container) =>
+      switch (container) {
+        StreamContainer.mp4 => YouTubeAudioFormat.m4a,
+        StreamContainer.webM => YouTubeAudioFormat.webm,
+        _ => null,
+      };
 }
 
 /// Creates stable, source-aware metadata without storing YouTube's temporary

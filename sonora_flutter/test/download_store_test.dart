@@ -320,59 +320,65 @@ void main() {
     expect(reopened.tracks, isEmpty);
   });
 
-  test('a download that is not media is rejected instead of being stored', () async {
-    // A response can arrive at full length while holding bytes from elsewhere
-    // in the file. Storing it would leave a row that fails every time it is
-    // played, so the download is reported as failed and stays retryable.
-    final displaced = List<int>.filled(4096, 0x5a);
-    final item = MediaItem(
-      id: 'youtube:displaced_1',
-      title: 'Displaced audio',
-      extras: const {'source': 'youtube', 'sourceId': 'displaced_1'},
-    );
-    final store = storeWith(
-      resolveStream: (track) async => ResolvedTrackSource(
-        url: Uri.parse('https://media.test/audio.m4a'),
-        extension: 'm4a',
-      ),
-      fetcher: (url, path, onProgress) async {
-        final file = File(path)..writeAsBytesSync(displaced);
-        onProgress(displaced.length, displaced.length);
-        return file.lengthSync();
-      },
-    );
-    await store.load();
+  test(
+    'a download that is not media is rejected instead of being stored',
+    () async {
+      // A response can arrive at full length while holding bytes from elsewhere
+      // in the file. Storing it would leave a row that fails every time it is
+      // played, so the download is reported as failed and stays retryable.
+      final displaced = List<int>.filled(4096, 0x5a);
+      final item = MediaItem(
+        id: 'youtube:displaced_1',
+        title: 'Displaced audio',
+        extras: const {'source': 'youtube', 'sourceId': 'displaced_1'},
+      );
+      final store = storeWith(
+        resolveStream: (track) async => ResolvedTrackSource(
+          url: Uri.parse('https://media.test/audio.m4a'),
+          extension: 'm4a',
+        ),
+        fetcher: (url, path, onProgress) async {
+          final file = File(path)..writeAsBytesSync(displaced);
+          onProgress(displaced.length, displaced.length);
+          return file.lengthSync();
+        },
+      );
+      await store.load();
 
-    await store.download(item);
+      await store.download(item);
 
-    expect(store.contains(item.id), isFalse);
-    expect(store.errorFor(item.id), isNotNull);
-    expect(store.localPathFor(item.id), isNull);
-    expect(
-      dir.listSync(),
-      isEmpty,
-      reason: 'the unusable file is not left on disk',
-    );
-  });
+      expect(store.contains(item.id), isFalse);
+      expect(store.errorFor(item.id), isNotNull);
+      expect(store.localPathFor(item.id), isNull);
+      expect(
+        dir.listSync(),
+        isEmpty,
+        reason: 'the unusable file is not left on disk',
+      );
+    },
+  );
 
-  test('a stored download that is no longer playable is dropped on load', () async {
-    final store = storeWith();
-    await store.load();
-    await store.download(track('a', url: 'https://cdn.test/a.mp3'));
-    final path = store.localPathFor('a')!;
-    // The file exists and is the expected size, but it is not media.
-    File(path).writeAsBytesSync(List<int>.filled(7, 0x5a));
+  test(
+    'a stored download that is no longer playable is dropped on load',
+    () async {
+      final store = storeWith();
+      await store.load();
+      await store.download(track('a', url: 'https://cdn.test/a.mp3'));
+      final path = store.localPathFor('a')!;
+      // The file exists and is the expected size, but it is not media.
+      File(path).writeAsBytesSync(List<int>.filled(7, 0x5a));
 
-    final reopened = storeWith();
-    await reopened.load();
+      final reopened = storeWith();
+      await reopened.load();
 
-    expect(reopened.tracks, isEmpty);
-    expect(
-      File(path).existsSync(),
-      isFalse,
-      reason: 'the unplayable file is cleaned up rather than kept',
-    );
-  });
+      expect(reopened.tracks, isEmpty);
+      expect(
+        File(path).existsSync(),
+        isFalse,
+        reason: 'the unplayable file is cleaned up rather than kept',
+      );
+    },
+  );
 
   test(
     'a failed download is reported on the track and leaves no file',
