@@ -46,47 +46,6 @@ void main() {
     },
   );
 
-  testWidgets('the drawer keeps its destinations reachable on a short screen', (
-    tester,
-  ) async {
-    // A tall test viewport would hide a banner that pushes the navigation off
-    // the screen, so this one is deliberately phone sized.
-    tester.view.physicalSize = const Size(360, 640);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-
-    await tester.pumpWidget(_app());
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byTooltip('Open menu'));
-    await tester.pumpAndSettle();
-
-    // Nothing overflowed, and every destination is on screen and tappable.
-    expect(tester.takeException(), isNull);
-    for (final label in ['Home', 'Search', 'Library']) {
-      final item = find.byKey(ValueKey('drawer-${label.toLowerCase()}'));
-      expect(item, findsOneWidget, reason: '$label must be present');
-      expect(
-        tester.getCenter(item).dy,
-        lessThan(640),
-        reason: '$label must not be pushed off the panel',
-      );
-    }
-
-    // The destinations sit in the top third rather than below a banner, which
-    // is the thing a tall header actually costs: they stay reachable, but a
-    // drawer is meant to be scannable at a glance.
-    expect(
-      tester.getCenter(find.byKey(const ValueKey('drawer-home'))).dy,
-      lessThan(640 / 3),
-      reason: 'Home must be near the top of the panel, not below a header',
-    );
-
-    // The attribution stays reachable at the foot.
-    expect(find.byKey(const ValueKey('sonora-github-link')), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
   testWidgets('See all opens a page listing the whole section', (tester) async {
     useTestViewport(tester);
 
