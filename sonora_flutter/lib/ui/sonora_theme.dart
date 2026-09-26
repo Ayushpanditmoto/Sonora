@@ -4,11 +4,29 @@ abstract final class SonoraColors {
   static const background = Color(0xFF090B0A);
   static const surface = Color(0xFF151816);
   static const surfaceHigh = Color(0xFF202420);
+
+  /// Hairlines and dividers, kept here so a border does not become a literal
+  /// hex value in a widget.
+  static const outline = Color(0xFF2A302C);
+
+  /// The tint behind the selected row in a list or the drawer.
+  static const selected = Color(0xFF213129);
+
+  /// A faint brand wash, for a header or a banner rather than a control.
+  static const brandWash = Color(0xFF16201A);
   static const green = Color(0xFF63E69D);
   static const coral = Color(0xFFFF8066);
   static const lilac = Color(0xFFA58CFF);
   static const text = Color(0xFFF5F6F2);
   static const muted = Color(0xFF9DA39D);
+}
+
+/// Corner radii, so a card, a control and a chip do not each pick their own.
+abstract final class SonoraRadius {
+  static const chip = BorderRadius.all(Radius.circular(11));
+  static const control = BorderRadius.all(Radius.circular(15));
+  static const card = BorderRadius.all(Radius.circular(18));
+  static const panel = BorderRadius.horizontal(right: Radius.circular(24));
 }
 
 abstract final class SonoraTheme {

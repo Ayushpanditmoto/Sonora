@@ -27,7 +27,11 @@ const _drawerDestinations = <({Icon icon, Icon selectedIcon, String label})>[
 ];
 
 /// App-wide navigation and project attribution.
-
+///
+/// The header is a compact identity row rather than a banner. A drawer is a
+/// place to get somewhere, so the destinations sit as close to the top as the
+/// app mark allows and stay above the fold on a short screen; a slogan and a
+/// decorative wash had pushed them a third of the way down the panel.
 class AppDrawer extends StatelessWidget {
   const AppDrawer({
     required this.selectedIndex,
@@ -41,77 +45,46 @@ class AppDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      width: math.min(332.0, MediaQuery.sizeOf(context).width * 0.88),
-      backgroundColor: SonoraColors.background,
+      width: math.min(320.0, MediaQuery.sizeOf(context).width * 0.86),
+      backgroundColor: SonoraColors.surface,
       clipBehavior: Clip.antiAlias,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.horizontal(right: Radius.circular(24)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: SonoraRadius.panel),
       child: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _DrawerHeader(onClose: () => Navigator.of(context).pop()),
-              const _DrawerSectionLabel(label: 'DISCOVER'),
-              for (final (index, destination) in _drawerDestinations.indexed)
-                _DrawerNavigationItem(
-                  key: ValueKey('drawer-${destination.label.toLowerCase()}'),
-                  label: destination.label,
-                  icon: index == selectedIndex
-                      ? destination.selectedIcon
-                      : destination.icon,
-                  selected: index == selectedIndex,
-                  onTap: () {
-                    onDestinationSelected(index);
-                    Navigator.of(context).pop();
-                  },
-                ),
-              const _DrawerSectionLabel(label: 'PROJECT'),
-              _GitHubCard(
-                key: const ValueKey('sonora-github-link'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _DrawerHeader(onClose: () => Navigator.of(context).pop()),
+            const SizedBox(height: 8),
+            for (final (index, destination) in _drawerDestinations.indexed)
+              _DrawerNavigationItem(
+                key: ValueKey('drawer-${destination.label.toLowerCase()}'),
+                label: destination.label,
+                icon: index == selectedIndex
+                    ? destination.selectedIcon
+                    : destination.icon,
+                selected: index == selectedIndex,
                 onTap: () {
+                  onDestinationSelected(index);
                   Navigator.of(context).pop();
-                  unawaited(
-                    launchUrl(
-                      Uri.parse(_sonoraGitHubUrl),
-                      mode: LaunchMode.externalApplication,
-                    ),
-                  );
                 },
               ),
-              const SizedBox(height: 24),
-              const Padding(
-                padding: EdgeInsets.fromLTRB(22, 0, 22, 20),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.favorite_rounded,
-                      size: 14,
-                      color: SonoraColors.coral,
-                    ),
-                    SizedBox(width: 7),
-                    Expanded(
-                      child: Text(
-                        'Open-source music for everyone',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: SonoraColors.muted,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+            const Spacer(),
+            const _DrawerFooter(),
+            const SizedBox(height: 8),
+          ],
         ),
       ),
     );
   }
 }
 
+/// The app mark and a close control, and nothing else.
+///
+/// A drawer is a list of places to go. The banner this replaced stood 248 dp
+/// tall and carried a slogan, a badge and two decorative circles, which pushed
+/// Home, Search and Library well down the panel and left them below the fold on
+/// a short screen. The mark is kept because it is the app's identity, not a
+/// promotion.
 class _DrawerHeader extends StatelessWidget {
   const _DrawerHeader({required this.onClose});
 
@@ -120,143 +93,57 @@ class _DrawerHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 248,
+      padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF1D2B23), Color(0xFF121614)],
-        ),
+        color: SonoraColors.brandWash,
+        border: Border(bottom: BorderSide(color: SonoraColors.outline)),
       ),
-      child: Stack(
+      child: Row(
         children: [
-          Positioned(
-            right: -48,
-            top: -54,
-            child: Container(
-              width: 156,
-              height: 156,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: SonoraColors.green.withValues(alpha: 0.09),
-              ),
+          Container(
+            width: 38,
+            height: 38,
+            decoration: const BoxDecoration(
+              color: SonoraColors.green,
+              borderRadius: SonoraRadius.chip,
+            ),
+            child: const Icon(
+              Icons.graphic_eq_rounded,
+              color: Colors.black,
+              size: 22,
             ),
           ),
-          Positioned(
-            right: 44,
-            bottom: -64,
-            child: Container(
-              width: 126,
-              height: 126,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: SonoraColors.lilac.withValues(alpha: 0.07),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(22, 18, 14, 20),
+          const SizedBox(width: 12),
+          const Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: SonoraColors.green,
-                        borderRadius: BorderRadius.circular(13),
-                      ),
-                      child: const Icon(
-                        Icons.graphic_eq_rounded,
-                        color: Colors.black,
-                        size: 25,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'SONORA',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 1.4,
-                              color: SonoraColors.green,
-                            ),
-                          ),
-                          SizedBox(height: 2),
-                          Text(
-                            'YOUR MUSIC, YOUR SPACE',
-                            style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 1.1,
-                              color: SonoraColors.muted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Close menu',
-                      onPressed: onClose,
-                      icon: const Icon(Icons.close_rounded, size: 20),
-                      color: SonoraColors.muted,
-                    ),
-                  ],
-                ),
-                const Spacer(),
-                const Text(
-                  'Find your next\nfavorite sound.',
+                Text(
+                  'Sonora',
                   style: TextStyle(
-                    fontSize: 27,
-                    height: 1.05,
+                    fontSize: 17,
                     fontWeight: FontWeight.w800,
-                    letterSpacing: -0.4,
+                    letterSpacing: -0.2,
                   ),
                 ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.22),
-                    borderRadius: BorderRadius.circular(30),
-                    border: Border.all(
-                      color: SonoraColors.green.withValues(alpha: 0.18),
-                    ),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: SonoraColors.green,
-                          shape: BoxShape.circle,
-                        ),
-                        child: SizedBox.square(dimension: 6),
-                      ),
-                      SizedBox(width: 7),
-                      Text(
-                        'OPEN SOURCE',
-                        style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.1,
-                          color: SonoraColors.green,
-                        ),
-                      ),
-                    ],
+                Text(
+                  'Open-source music',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w500,
+                    color: SonoraColors.muted,
                   ),
                 ),
               ],
             ),
+          ),
+          IconButton(
+            tooltip: 'Close menu',
+            onPressed: onClose,
+            icon: const Icon(Icons.close_rounded, size: 19),
+            color: SonoraColors.muted,
+            visualDensity: VisualDensity.compact,
           ),
         ],
       ),
@@ -264,29 +151,30 @@ class _DrawerHeader extends StatelessWidget {
   }
 }
 
-class _DrawerSectionLabel extends StatelessWidget {
-  const _DrawerSectionLabel({required this.label});
-
-  final String label;
+/// Attribution, as one quiet row at the foot of the panel.
+///
+/// It was its own labelled section, which read as a fourth destination and gave
+/// a footer link the weight of a navigation item.
+class _DrawerFooter extends StatelessWidget {
+  const _DrawerFooter();
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-      child: Row(
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.4,
-              color: SonoraColors.muted,
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: SonoraColors.outline)),
+      ),
+      child: _GitHubCard(
+        key: const ValueKey('sonora-github-link'),
+        onTap: () {
+          Navigator.of(context).pop();
+          unawaited(
+            launchUrl(
+              Uri.parse(_sonoraGitHubUrl),
+              mode: LaunchMode.externalApplication,
             ),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(child: Divider(height: 1, color: Color(0xFF2A302C))),
-        ],
+          );
+        },
       ),
     );
   }
@@ -309,51 +197,31 @@ class _DrawerNavigationItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       child: Material(
-        color: selected ? const Color(0xFF213129) : Colors.transparent,
-        borderRadius: BorderRadius.circular(15),
+        color: selected ? SonoraColors.selected : Colors.transparent,
+        borderRadius: SonoraRadius.control,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(15),
+          borderRadius: SonoraRadius.control,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
               children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? SonoraColors.green.withValues(alpha: 0.14)
-                        : SonoraColors.surfaceHigh,
-                    borderRadius: BorderRadius.circular(11),
-                  ),
-                  child: Icon(
-                    icon.icon,
-                    size: 20,
-                    color: selected ? SonoraColors.green : SonoraColors.muted,
-                  ),
+                Icon(
+                  icon.icon,
+                  size: 21,
+                  color: selected ? SonoraColors.green : SonoraColors.muted,
                 ),
-                const SizedBox(width: 13),
+                const SizedBox(width: 14),
                 Text(
                   label,
                   style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                    fontSize: 15,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                     color: selected ? SonoraColors.text : SonoraColors.muted,
                   ),
                 ),
-                const Spacer(),
-                if (selected)
-                  Container(
-                    width: 4,
-                    height: 22,
-                    decoration: BoxDecoration(
-                      color: SonoraColors.green,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
               ],
             ),
           ),
@@ -370,70 +238,48 @@ class _GitHubCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: Material(
-        color: SonoraColors.surfaceHigh,
-        borderRadius: BorderRadius.circular(18),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(18),
-          child: Container(
-            padding: const EdgeInsets.all(15),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFF303832)),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: SonoraColors.green.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(13),
-                  ),
-                  child: const Icon(
-                    Icons.code_rounded,
-                    color: SonoraColors.green,
-                    size: 23,
-                  ),
-                ),
-                const SizedBox(width: 13),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Made by Ayush Pandit',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                        ),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 14, 20, 14),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.code_rounded,
+                color: SonoraColors.muted,
+                size: 18,
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Made by Ayush Pandit',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
                       ),
-                      SizedBox(height: 3),
-                      Text(
-                        'github.com/Ayushpanditmoto',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: SonoraColors.muted,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                    Text(
+                      'github.com/Ayushpanditmoto',
+                      style: TextStyle(fontSize: 11, color: SonoraColors.muted),
+                    ),
+                  ],
                 ),
-                const Icon(
-                  Icons.arrow_outward_rounded,
-                  size: 18,
-                  color: SonoraColors.muted,
-                ),
-              ],
-            ),
+              ),
+              const Icon(
+                Icons.arrow_outward_rounded,
+                size: 15,
+                color: SonoraColors.muted,
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 }
-
-/// Opens the app drawer from a page-specific custom header.
