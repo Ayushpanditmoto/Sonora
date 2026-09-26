@@ -10,10 +10,33 @@ import 'package:flutter/services.dart';
 /// no-ops on platforms without a notification implementation so the download
 /// store remains usable in tests and on iOS/web.
 class DownloadNotifier {
-  DownloadNotifier();
+  DownloadNotifier() {
+    // The notification's Cancel and Cancel all actions are answered by Dart,
+    // because that is where the transfer actually lives. The store installs
+    // [onCancel] as it is constructed, which is before any download can exist.
+    const MethodChannel(_channelName).setMethodCallHandler(_handleNativeCall);
+  }
 
   bool get _supported =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+  /// Stops one download, or every running download when the id is null.
+  void Function(String? id)? onCancel;
+
+  Future<Object?> _handleNativeCall(MethodCall call) async {
+    switch (call.method) {
+      case 'cancelDownload':
+        final id = call.arguments;
+        // A malformed argument is ignored rather than cast, because this runs
+        // on the platform thread and a throw here would cancel nothing.
+        if (id is String) onCancel?.call(id);
+      case 'cancelAllDownloads':
+        onCancel?.call(null);
+      default:
+        break;
+    }
+    return null;
+  }
 
   Timer? _clearTimer;
 
@@ -49,6 +72,8 @@ class DownloadNotifier {
         'indeterminate': true,
         'ongoing': true,
         'autoCancel': false,
+        'cancellable': true,
+        'activeCount': _activeIds.length,
       });
     });
   }
@@ -82,6 +107,8 @@ class DownloadNotifier {
         'indeterminate': !knownTotal,
         'ongoing': true,
         'autoCancel': false,
+        'cancellable': true,
+        'activeCount': _activeIds.length,
       });
     });
   }
@@ -120,6 +147,30 @@ class DownloadNotifier {
         'indeterminate': false,
         'ongoing': false,
         'autoCancel': true,
+        'cancellable': false,
+      });
+      _activeIds.remove(track.id);
+      if (_activeIds.isEmpty) _scheduleClear();
+    });
+  }
+
+  /// Reports that a download was stopped by the user rather than failing.
+  ///
+  /// It reuses the transient shape of [failed] so the progress bar is replaced
+  /// by a plain confirmation that clears itself, and carries no Cancel action
+  /// because there is nothing left to cancel.
+  Future<void> cancelled(MediaItem track) async {
+    if (!_supported) return;
+    return _enqueue(() async {
+      await _send('cancelled', {
+        'id': track.id,
+        'title': 'Download cancelled',
+        'text': track.title,
+        'progress': 0,
+        'indeterminate': false,
+        'ongoing': false,
+        'autoCancel': true,
+        'cancellable': false,
       });
       _activeIds.remove(track.id);
       if (_activeIds.isEmpty) _scheduleClear();

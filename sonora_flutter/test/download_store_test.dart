@@ -6,6 +6,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sonora_flutter/services/download_notification.dart';
 import 'package:sonora_flutter/services/download_store.dart';
 import 'package:sonora_flutter/services/track_source.dart';
 import 'package:sonora_flutter/services/youtube_api.dart';
@@ -42,7 +43,7 @@ void main() {
   }) => DownloadStore(
     fetcher:
         fetcher ??
-        (url, path, onProgress) async {
+        (url, path, onProgress, {cancelToken}) async {
           final file = File(path)..writeAsBytesSync(mediaPayload(12));
           onProgress(7, 7);
           return file.lengthSync();
@@ -125,7 +126,7 @@ void main() {
               extension: format.fileExtension,
             );
           },
-          fetcher: (url, path, onProgress) async {
+          fetcher: (url, path, onProgress, {cancelToken}) async {
             seenUrls.add(url);
             final file = File(path)..writeAsBytesSync(mediaPayload(12));
             onProgress(file.lengthSync(), file.lengthSync());
@@ -167,7 +168,7 @@ void main() {
           extension: 'm4a',
         );
       },
-      fetcher: (url, path, onProgress) async {
+      fetcher: (url, path, onProgress, {cancelToken}) async {
         seenUrls.add(url);
         final file = File(path);
         if (resolutions == 1) {
@@ -206,7 +207,7 @@ void main() {
       extras: const {'source': 'youtube', 'sourceId': 'segmented_1'},
     );
     final store = storeWith(
-      fetcher: (url, path, onProgress) async {
+      fetcher: (url, path, onProgress, {cancelToken}) async {
         regularCalls++;
         return 0;
       },
@@ -215,13 +216,14 @@ void main() {
         extension: 'm4a',
         contentLength: 2048,
       ),
-      segmentedFetcher: (url, path, contentLength, onProgress) async {
-        segmentedCalls++;
-        expect(contentLength, 2048);
-        final file = File(path)..writeAsBytesSync(mediaPayload(12));
-        onProgress(7, contentLength);
-        return file.lengthSync();
-      },
+      segmentedFetcher:
+          (url, path, contentLength, onProgress, {cancelToken}) async {
+            segmentedCalls++;
+            expect(contentLength, 2048);
+            final file = File(path)..writeAsBytesSync(mediaPayload(12));
+            onProgress(7, contentLength);
+            return file.lengthSync();
+          },
     );
     await store.load();
 
@@ -337,7 +339,7 @@ void main() {
           url: Uri.parse('https://media.test/audio.m4a'),
           extension: 'm4a',
         ),
-        fetcher: (url, path, onProgress) async {
+        fetcher: (url, path, onProgress, {cancelToken}) async {
           final file = File(path)..writeAsBytesSync(displaced);
           onProgress(displaced.length, displaced.length);
           return file.lengthSync();
@@ -384,7 +386,8 @@ void main() {
     'a failed download is reported on the track and leaves no file',
     () async {
       final store = storeWith(
-        fetcher: (url, path, onProgress) async => throw StateError('offline'),
+        fetcher: (url, path, onProgress, {cancelToken}) async =>
+            throw StateError('offline'),
       );
       await store.load();
 
@@ -409,7 +412,7 @@ void main() {
   test('downloadAll fetches every track in order', () async {
     final seen = <String>[];
     final store = storeWith(
-      fetcher: (url, path, onProgress) async {
+      fetcher: (url, path, onProgress, {cancelToken}) async {
         seen.add(url);
         final file = File(path)..writeAsBytesSync(mediaPayload(12));
         return file.lengthSync();
@@ -451,7 +454,7 @@ void main() {
     final unknownStarted = Completer<void>();
     final releaseUnknown = Completer<void>();
     final store = storeWith(
-      fetcher: (url, path, onProgress) async {
+      fetcher: (url, path, onProgress, {cancelToken}) async {
         final file = File(path)..writeAsBytesSync(mediaPayload(12));
         if (url.endsWith('/known.mp3')) {
           onProgress(2, 4);
@@ -503,7 +506,7 @@ void main() {
   test('retrying a failed download clears its error', () async {
     var attempts = 0;
     final store = storeWith(
-      fetcher: (url, path, onProgress) async {
+      fetcher: (url, path, onProgress, {cancelToken}) async {
         attempts++;
         if (attempts == 1) throw StateError('offline');
         final file = File(path)..writeAsBytesSync(mediaPayload(12));
@@ -529,7 +532,7 @@ void main() {
     () async {
       var notifications = 0;
       final store = storeWith(
-        fetcher: (url, path, onProgress) async {
+        fetcher: (url, path, onProgress, {cancelToken}) async {
           final file = File(path)..writeAsBytesSync(mediaPayload(12));
           for (var received = 1; received <= 200; received++) {
             onProgress(received, 200);
@@ -556,7 +559,7 @@ void main() {
     final releaseFirst = Completer<void>();
     final seen = <String>[];
     final store = storeWith(
-      fetcher: (url, path, onProgress) async {
+      fetcher: (url, path, onProgress, {cancelToken}) async {
         seen.add(url);
         if (url.endsWith('/a.mp3')) {
           firstStarted.complete();
@@ -590,4 +593,212 @@ void main() {
     expect(store.batchPosition, isNull);
     expect(store.batchTotal, isNull);
   });
+
+  test('cancelling keeps no file and offers no retry', () async {
+    final started = Completer<void>();
+    final release = Completer<void>();
+    final store = storeWith(
+      fetcher: (url, path, onProgress, {cancelToken}) async {
+        onProgress(5, 10);
+        started.complete();
+        await release.future;
+        // A fetcher that ignores the token still returns a complete file, and
+        // it must still be discarded: the user asked for it to be stopped.
+        final file = File(path)..writeAsBytesSync(mediaPayload(12));
+        return file.lengthSync();
+      },
+    );
+    await store.load();
+    final item = track('a', url: 'https://cdn.test/a.mp3');
+
+    final download = store.download(item);
+    await started.future;
+    expect(store.isDownloading('a'), isTrue);
+
+    store.cancel('a');
+    expect(store.isCancelling('a'), isTrue);
+
+    release.complete();
+    await download;
+
+    expect(store.contains('a'), isFalse);
+    // Stopping is the user's choice, so the row must not offer a retry as if
+    // the transfer had failed.
+    expect(store.errorFor('a'), isNull);
+    expect(store.isDownloading('a'), isFalse);
+    expect(store.isCancelling('a'), isFalse);
+    expect(dir.listSync(), isEmpty, reason: 'the partial file is cleaned up');
+  });
+
+  test('cancelling all abandons the batch instead of draining it', () async {
+    final firstStarted = Completer<void>();
+    final release = Completer<void>();
+    final seen = <String>[];
+    final store = storeWith(
+      fetcher: (url, path, onProgress, {cancelToken}) async {
+        seen.add(url);
+        if (url.endsWith('/a.mp3')) {
+          firstStarted.complete();
+          await release.future;
+        }
+        final file = File(path)..writeAsBytesSync(mediaPayload(12));
+        return file.lengthSync();
+      },
+    );
+    await store.load();
+
+    final batch = store.downloadAll([
+      track('a', url: 'https://cdn.test/a.mp3'),
+      track('b', url: 'https://cdn.test/b.mp3'),
+    ]);
+    await firstStarted.future;
+    expect(store.canCancelAll, isTrue);
+
+    store.cancelAll();
+    release.complete();
+    await batch;
+
+    expect(seen, ['https://cdn.test/a.mp3'], reason: 'the queue is abandoned');
+    expect(store.contains('a'), isFalse);
+    expect(store.contains('b'), isFalse);
+    expect(store.errorFor('a'), isNull);
+    expect(store.canCancelAll, isFalse);
+    expect(dir.listSync(), isEmpty);
+  });
+
+  test('the notification cancel action stops the download it names', () async {
+    final notifier = DownloadNotifier();
+    final started = Completer<void>();
+    final release = Completer<void>();
+    final store = DownloadStore(
+      fetcher: (url, path, onProgress, {cancelToken}) async {
+        started.complete();
+        await release.future;
+        return 0;
+      },
+      directory: () async => dir,
+      notifier: notifier,
+    );
+    await store.load();
+    expect(
+      notifier.onCancel,
+      isNotNull,
+      reason: 'the store must answer the notification actions',
+    );
+
+    final download = store.download(track('a', url: 'https://cdn.test/a.mp3'));
+    await started.future;
+    notifier.onCancel!('a');
+    release.complete();
+    await download;
+
+    expect(store.contains('a'), isFalse);
+    expect(store.errorFor('a'), isNull);
+  });
+
+  test('the notification cancel-all action stops every download', () async {
+    final notifier = DownloadNotifier();
+    final started = Completer<void>();
+    final release = Completer<void>();
+    final store = DownloadStore(
+      fetcher: (url, path, onProgress, {cancelToken}) async {
+        started.complete();
+        await release.future;
+        return 0;
+      },
+      directory: () async => dir,
+      notifier: notifier,
+    );
+    await store.load();
+
+    final download = store.download(track('a', url: 'https://cdn.test/a.mp3'));
+    await started.future;
+
+    notifier.onCancel!(null);
+    release.complete();
+    await download;
+
+    expect(store.contains('a'), isFalse);
+  });
+
+  test(
+    'cancelling a segmented download mid-stream leaves nothing behind',
+    () async {
+      final payload = mediaPayload(1024 * 1024 + 137);
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      // Signalled once bytes are on the wire, so the stop lands during the copy
+      // rather than before the request is even issued.
+      final streaming = Completer<void>();
+      final release = Completer<void>();
+      server.listen((request) async {
+        final value = request.headers.value('range');
+        if (value == null) {
+          request.response.statusCode = HttpStatus.badRequest;
+          await request.response.close();
+          return;
+        }
+        final bounds = RegExp(r'bytes=(\d+)-(\d+)').firstMatch(value)!;
+        final start = int.parse(bounds.group(1)!);
+        final end = int.parse(bounds.group(2)!);
+        request.response.statusCode = HttpStatus.partialContent;
+        request.response.headers.set(
+          'content-range',
+          'bytes $start-$end/${payload.length}',
+        );
+        // Only the head of the range goes out and the tail waits on the test,
+        // so the response is still open when the download is cancelled.
+        final head = start + 1024;
+        request.response.add(payload.sublist(start, head));
+        await request.response.flush();
+        if (!streaming.isCompleted) streaming.complete();
+        await release.future;
+        if (head <= end) request.response.add(payload.sublist(head, end + 1));
+        await request.response.close();
+      });
+
+      final previousHttpOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      try {
+        final item = MediaItem(
+          id: 'youtube:cancelled_1',
+          title: 'Cancelled audio',
+          extras: const {'source': 'youtube', 'sourceId': 'cancelled_1'},
+        );
+        final store = DownloadStore(
+          directory: () async => dir,
+          resolveStream: (track) async => ResolvedTrackSource(
+            url: Uri.parse('http://127.0.0.1:${server.port}/audio.m4a'),
+            extension: 'm4a',
+            contentLength: payload.length,
+          ),
+        );
+        await store.load();
+
+        final download = store.download(item);
+        await streaming.future;
+        store.cancel(item.id);
+        release.complete();
+        await download;
+
+        expect(store.contains(item.id), isFalse);
+        expect(
+          store.errorFor(item.id),
+          isNull,
+          reason: 'a stopped download is not a failure to retry',
+        );
+        expect(store.activeDownloadCount, 0);
+        expect(
+          dir.listSync(),
+          isEmpty,
+          reason: 'the half written file must not be offered as a download',
+        );
+      } finally {
+        // Released unconditionally so a failure above cannot leave the server
+        // handler waiting on a future that will never complete.
+        if (!release.isCompleted) release.complete();
+        HttpOverrides.global = previousHttpOverrides;
+      }
+    },
+  );
 }

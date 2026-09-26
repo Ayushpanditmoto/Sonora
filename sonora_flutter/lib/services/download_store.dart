@@ -19,11 +19,16 @@ typedef DownloadProgress = void Function(int received, int total);
 
 /// Writes the bytes at [url] to [path], reporting progress along the way, and
 /// returns how many bytes it wrote. Throws when the download fails.
+///
+/// [cancelToken] aborts the transfer when it is cancelled. It is optional so an
+/// injected fetcher can ignore cancellation, but the store still treats the
+/// result as cancelled when the token is set.
 typedef DownloadFetcher = Future<int> Function(
   String url,
   String path,
-  DownloadProgress onProgress,
-);
+  DownloadProgress onProgress, {
+  CancelToken? cancelToken,
+});
 
 /// Downloads one known-length source as concurrent byte ranges. This avoids
 /// the per-connection throttle Googlevideo applies to mobile downloads.
@@ -31,8 +36,9 @@ typedef SegmentedDownloadFetcher = Future<int> Function(
   String url,
   String path,
   int contentLength,
-  DownloadProgress onProgress,
-);
+  DownloadProgress onProgress, {
+  CancelToken? cancelToken,
+});
 
 /// Tracks kept on the device so they play without a connection.
 ///
@@ -51,7 +57,12 @@ class DownloadStore extends ChangeNotifier {
        _directory = directory ?? _defaultDirectory,
        _notifier = notifier ?? DownloadNotifier(),
        _resolveStream = resolveStream ?? TrackSourceResolver().resolve,
-       _fetchSegments = segmentedFetcher ?? _fetchSegmentsToFile;
+       _fetchSegments = segmentedFetcher ?? _fetchSegmentsToFile {
+    // The notification's Cancel and Cancel all actions are answered here,
+    // because this is where the transfer actually lives. A null id means the
+    // user asked for every running download to stop.
+    _notifier.onCancel = (id) => id == null ? cancelAll() : cancel(id);
+  }
 
   static const _prefsKey = 'sonora.downloads';
 
@@ -81,6 +92,17 @@ class DownloadStore extends ChangeNotifier {
 
   /// Bytes received so far by downloads that are still running.
   final _receivedBytes = <String, int>{};
+
+  /// Aborts the transfer behind each running download.
+  final _tokens = <String, CancelToken>{};
+
+  /// Downloads the user has asked to stop. They stay listed until the fetch
+  /// actually unwinds, so a row can show that it is stopping rather than
+  /// vanishing while bytes are still on the wire.
+  final _cancelledIds = <String>{};
+
+  /// Set when every running download, and the batch feeding them, is abandoned.
+  bool _batchCancelled = false;
 
   bool _batchRunning = false;
   int? _batchPosition;
@@ -130,6 +152,35 @@ class DownloadStore extends ChangeNotifier {
 
   /// How many downloads are running at once.
   int get activeDownloadCount => _progress.length;
+
+  /// Whether [id] has been asked to stop and is still unwinding.
+  bool isCancelling(String id) => _cancelledIds.contains(id);
+
+  /// Whether anything is running that [cancelAll] would stop.
+  bool get canCancelAll => _progress.isNotEmpty;
+
+  /// Stops the download of [id], if one is running.
+  ///
+  /// The partial file is deleted and nothing is recorded against the track: a
+  /// download the user stopped is a decision, not a failure to retry.
+  void cancel(String id) {
+    if (!_progress.containsKey(id)) return;
+    _cancelledIds.add(id);
+    _tokens[id]?.cancel('Cancelled');
+    notifyListeners();
+  }
+
+  /// Stops every running download and abandons the batch feeding them, so the
+  /// rest of the queue is not started afterwards.
+  void cancelAll() {
+    if (_progress.isEmpty) return;
+    _batchCancelled = true;
+    for (final id in _progress.keys.toList()) {
+      _cancelledIds.add(id);
+      _tokens[id]?.cancel('Cancelled');
+    }
+    notifyListeners();
+  }
 
   /// Bytes received so far by all running downloads.
   int get activeBytes =>
@@ -204,6 +255,8 @@ class DownloadStore extends ChangeNotifier {
     _progress[id] = 0;
     _receivedBytes[id] = 0;
     _indeterminateProgress.add(id);
+    final cancelToken = CancelToken();
+    _tokens[id] = cancelToken;
     _notifyProgress();
     unawaited(
       _notifier.start(
@@ -261,11 +314,13 @@ class DownloadStore extends ChangeNotifier {
                   target.path,
                   contentLength,
                   updateProgress,
+                  cancelToken: cancelToken,
                 )
               : await _fetch(
                   source.url.toString(),
                   target.path,
                   updateProgress,
+                  cancelToken: cancelToken,
                 );
           break;
         } catch (error) {
@@ -287,6 +342,14 @@ class DownloadStore extends ChangeNotifier {
       final completedTarget = target;
       if (completedTarget == null) {
         throw StateError('The audio download ended without a file.');
+      }
+      // A fetcher that does not honour the token can still return a complete
+      // file after the user asked to stop, so the result is dropped here rather
+      // than saved.
+      if (_cancelledIds.contains(id)) {
+        await _deleteQuietly(completedTarget);
+        unawaited(_notifier.cancelled(track));
+        return;
       }
       // A response can arrive complete in length and still not be the media,
       // for example when a ranged request is answered with bytes from a
@@ -311,14 +374,22 @@ class DownloadStore extends ChangeNotifier {
       // A half written file would be offered as a download that cannot play, so
       // it is removed before the failure is recorded.
       await _deleteQuietly(target);
-      final message = _messageFor(error);
-      _errors[id] = message;
-      unawaited(_notifier.failed(track, message));
+      if (_isCancellation(error) || _cancelledIds.contains(id)) {
+        // Stopping a download is the user's choice, so it is not recorded as a
+        // failure the row would offer to retry.
+        unawaited(_notifier.cancelled(track));
+      } else {
+        final message = _messageFor(error);
+        _errors[id] = message;
+        unawaited(_notifier.failed(track, message));
+      }
     } finally {
       _activeTracks.remove(id);
       _progress.remove(id);
       _receivedBytes.remove(id);
       _indeterminateProgress.remove(id);
+      _tokens.remove(id);
+      _cancelledIds.remove(id);
       _progressNotificationTimer?.cancel();
       _progressNotificationTimer = null;
       _lastProgressNotificationAt = null;
@@ -344,10 +415,12 @@ class DownloadStore extends ChangeNotifier {
     _batchTrackIds = {for (final track in pending) track.id};
     _batchPosition = 1;
     _batchTotal = pending.length;
+    _batchCancelled = false;
     notifyListeners();
 
     try {
       for (var index = 0; index < pending.length; index++) {
+        if (_batchCancelled) break;
         _batchPosition = index + 1;
         notifyListeners();
         await download(pending[index]);
@@ -356,6 +429,7 @@ class DownloadStore extends ChangeNotifier {
       _batchRunning = false;
       _batchPosition = null;
       _batchTotal = null;
+      _batchCancelled = false;
       _batchTrackIds = const {};
       notifyListeners();
     }
@@ -415,6 +489,11 @@ class DownloadStore extends ChangeNotifier {
     }
     return error is StateError && error.toString().contains('403');
   }
+
+  /// Whether [error] is the abort a cancelled token raises, rather than a real
+  /// failure worth showing on the row.
+  bool _isCancellation(Object error) =>
+      error is DioException && error.type == DioExceptionType.cancel;
 
   /// A message worth showing for [error], rather than its type name.
   String _messageFor(Object error) {
@@ -571,8 +650,9 @@ bool _startsWith(List<int> bytes, List<int> signature) {
 Future<int> _fetchToFile(
   String url,
   String path,
-  DownloadProgress onProgress,
-) async {
+  DownloadProgress onProgress, {
+  CancelToken? cancelToken,
+}) async {
   final dio = Dio();
   final file = File(path);
   await dio.download(
@@ -580,6 +660,7 @@ Future<int> _fetchToFile(
     path,
     options: Options(headers: headersForMediaUrl(Uri.parse(url))),
     onReceiveProgress: onProgress,
+    cancelToken: cancelToken,
   );
   // Use the completed file as the source of truth. A server can omit or
   // misreport Content-Length, while the bytes on disk are the actual download.
@@ -595,12 +676,13 @@ Future<int> _fetchSegmentsToFile(
   String url,
   String path,
   int contentLength,
-  DownloadProgress onProgress,
-) async {
+  DownloadProgress onProgress, {
+  CancelToken? cancelToken,
+}) async {
   const minimumParallelSize = 1024 * 1024;
   const segmentCount = 4;
   if (contentLength < minimumParallelSize) {
-    return _fetchToFile(url, path, onProgress);
+    return _fetchToFile(url, path, onProgress, cancelToken: cancelToken);
   }
 
   final file = File(path);
@@ -637,6 +719,7 @@ Future<int> _fetchSegmentsToFile(
         file: file,
         start: segment.start,
         end: segment.end,
+        cancelToken: cancelToken,
         onBytes: (count) {
           received += count;
           onProgress(received, contentLength);
@@ -653,6 +736,7 @@ Future<void> _writeSegment({
   required int start,
   required int end,
   required void Function(int count) onBytes,
+  CancelToken? cancelToken,
 }) async {
   final response = await dio.get<ResponseBody>(
     url,
@@ -660,6 +744,7 @@ Future<void> _writeSegment({
       responseType: ResponseType.stream,
       headers: {'Range': 'bytes=$start-$end', 'Accept-Encoding': 'identity'},
     ),
+    cancelToken: cancelToken,
   );
   final body = response.data;
   if (response.statusCode != 206 || body == null) {
@@ -672,6 +757,15 @@ Future<void> _writeSegment({
     final expected = end - start + 1;
     var written = 0;
     await for (final chunk in body.stream) {
+      // A segment can already be streaming when the token is cancelled, and Dio
+      // only rejects the request it issued, so the copy stops here too. The
+      // partial file is deleted by the caller.
+      if (cancelToken?.isCancelled ?? false) {
+        throw DioException.requestCancelled(
+          requestOptions: RequestOptions(path: url),
+          reason: 'Cancelled',
+        );
+      }
       await output.writeFrom(chunk);
       written += chunk.length;
       onBytes(chunk.length);

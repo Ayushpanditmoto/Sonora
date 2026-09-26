@@ -2760,6 +2760,21 @@ class _ActiveDownloads extends StatelessWidget {
               '${_plural(tracks.length, 'download')} • ${_formatSize(store.activeBytes)} received',
               style: const TextStyle(color: SonoraColors.muted, fontSize: 11),
             ),
+            // Stopping a running download is only offered here rather than
+            // confirmed, because unlike removing a finished one it throws work
+            // away that the user can simply ask for again.
+            if (store.canCancelAll) ...[
+              const SizedBox(width: 4),
+              TextButton.icon(
+                onPressed: store.cancelAll,
+                icon: const Icon(Icons.stop_rounded, size: 18),
+                label: const Text('Cancel all'),
+                style: TextButton.styleFrom(
+                  foregroundColor: SonoraColors.muted,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ],
           ],
         ),
         const SizedBox(height: 6),
@@ -3271,24 +3286,48 @@ class _DownloadButton extends StatelessWidget {
         final progress = store.progressFor(track.id);
         if (progress != null) {
           final indeterminate = store.isProgressIndeterminate(track.id);
-          final message = indeterminate
+          // The transfer cannot be interrupted instantly, so the row says what
+          // is happening rather than pretending the stop already took effect.
+          final cancelling = store.isCancelling(track.id);
+          final message = cancelling
+              ? 'Stopping…'
+              : indeterminate
               ? 'Downloading'
               : 'Downloading ${(progress * 100).round()}%';
+          final hint = cancelling
+              ? 'Stopping this download'
+              : 'Stop this download';
           return Tooltip(
             message: message,
             child: Semantics(
               label: message,
+              hint: hint,
               liveRegion: true,
-              child: SizedBox(
-                width: 40,
-                height: 40,
-                child: Center(
-                  child: SizedBox.square(
-                    dimension: 16,
-                    child: CircularProgressIndicator(
-                      value: indeterminate ? null : progress,
-                      strokeWidth: 2,
-                    ),
+              button: true,
+              onTapHint: hint,
+              child: InkWell(
+                // Tapping the spinner is the only affordance on a row that is
+                // otherwise showing progress, so the whole target is the tap
+                // area rather than the 16dp indicator itself.
+                borderRadius: BorderRadius.circular(20),
+                onTap: cancelling ? null : () => store.cancel(track.id),
+                child: SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: Center(
+                    child: cancelling
+                        ? const Icon(
+                            Icons.stop_rounded,
+                            size: 18,
+                            color: SonoraColors.muted,
+                          )
+                        : SizedBox.square(
+                            dimension: 16,
+                            child: CircularProgressIndicator(
+                              value: indeterminate ? null : progress,
+                              strokeWidth: 2,
+                            ),
+                          ),
                   ),
                 ),
               ),

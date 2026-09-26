@@ -35,6 +35,19 @@ class MainActivity : AudioServiceActivity() {
     private var lastVolume = -1
     private var watching = false
 
+    /**
+     * Kept so a notification's Cancel action can be turned back into a call.
+     *
+     * It is null until the engine is attached, which is the one case where
+     * there is no running download to stop anyway.
+     */
+    private var downloadChannel: MethodChannel? = null
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.action == ACTION_CANCEL_DOWNLOAD) forwardCancelAction(intent)
+    }
+
     private val audioManager: AudioManager
         get() = getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
@@ -75,14 +88,19 @@ class MainActivity : AudioServiceActivity() {
             }
         }
 
-        MethodChannel(messenger, DOWNLOAD_METHOD_CHANNEL).setMethodCallHandler { call, result ->
+        val downloads = MethodChannel(messenger, DOWNLOAD_METHOD_CHANNEL)
+        downloads.setMethodCallHandler { call, result ->
             when (call.method) {
                 "requestPermission" -> {
                     requestNotificationPermission()
                     result.success(null)
                 }
-                "start", "update", "complete", "failed" -> {
-                    showDownloadNotification(call, call.method != "complete" && call.method != "failed")
+                // "cancelled" is a settled state like "complete" and "failed", so
+                // the notification must drop its progress bar and its Cancel
+                // action along with them.
+                "start", "update", "complete", "failed", "cancelled" -> {
+                    val inFlight = call.method == "start" || call.method == "update"
+                    showDownloadNotification(call, inFlight)
                     result.success(null)
                 }
                 "clear" -> {
@@ -92,6 +110,7 @@ class MainActivity : AudioServiceActivity() {
                 else -> result.notImplemented()
             }
         }
+        downloadChannel = downloads
 
         EventChannel(messenger, EVENT_CHANNEL).setStreamHandler(
             object : EventChannel.StreamHandler {
@@ -168,6 +187,9 @@ class MainActivity : AudioServiceActivity() {
         val text = call.argument<String>("text") ?: ""
         val progress = call.argument<Int>("progress") ?: 0
         val indeterminate = call.argument<Boolean>("indeterminate") ?: false
+        val cancellable = call.argument<Boolean>("cancellable") ?: false
+        val downloadId = call.argument<String>("id")
+        val activeCount = call.argument<Int>("activeCount") ?: 0
         val launchIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
@@ -177,7 +199,7 @@ class MainActivity : AudioServiceActivity() {
             launchIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val notification = NotificationCompat.Builder(this, DOWNLOAD_NOTIFICATION_CHANNEL)
+        val builder = NotificationCompat.Builder(this, DOWNLOAD_NOTIFICATION_CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_sonora)
             .setLargeIcon(BitmapFactory.decodeResource(resources, R.drawable.sonora_notification_icon))
             .setContentTitle(title)
@@ -189,8 +211,57 @@ class MainActivity : AudioServiceActivity() {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .setProgress(100, progress, indeterminate)
-            .build()
-        manager.notify(DOWNLOAD_NOTIFICATION_ID, notification)
+        // The transfer lives in Dart, so the action is a launch of this activity
+        // that is turned back into a method call in onNewIntent. With more than
+        // one download running, stopping the one shown would leave the rest
+        // going, so the single action stops them all.
+        if (cancellable) {
+            val stopEverything = activeCount > 1
+            builder.addAction(
+                R.drawable.ic_stat_cancel,
+                if (stopEverything) "Cancel all" else "Cancel",
+                cancelActionPendingIntent(downloadId, stopEverything),
+            )
+        }
+        manager.notify(DOWNLOAD_NOTIFICATION_ID, builder.build())
+    }
+
+    /**
+     * The intent behind the notification's Cancel action.
+     *
+     * The request code differs per target so that a second notification can
+     * carry its own pending intent instead of replacing the first one's.
+     */
+    private fun cancelActionPendingIntent(id: String?, stopEverything: Boolean): PendingIntent {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            action = ACTION_CANCEL_DOWNLOAD
+            putExtra(EXTRA_DOWNLOAD_ID, id)
+            putExtra(EXTRA_CANCEL_ALL, stopEverything)
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        return PendingIntent.getActivity(
+            this,
+            if (stopEverything) CANCEL_ALL_REQUEST_CODE else CANCEL_REQUEST_CODE,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
+    /**
+     * Turns a launched Cancel action into the call Dart is waiting for.
+     *
+     * Dart owns the transfer, so stopping it has to be asked for over the
+     * channel; the notification is only the place the user pressed.
+     */
+    private fun forwardCancelAction(intent: Intent) {
+        val stopEverything = intent.getBooleanExtra(EXTRA_CANCEL_ALL, false)
+        val id = intent.getStringExtra(EXTRA_DOWNLOAD_ID)
+        val channel = downloadChannel ?: return
+        channel.invokeMethod(
+            if (stopEverything) "cancelAllDownloads" else "cancelDownload",
+            if (stopEverything) null else id,
+        )
+        notificationManager().cancel(DOWNLOAD_NOTIFICATION_ID)
     }
 
     private fun notificationManager(): NotificationManager =
@@ -204,5 +275,10 @@ class MainActivity : AudioServiceActivity() {
         private const val DOWNLOAD_NOTIFICATION_ID = 0x534F
         private const val NOTIFICATION_PERMISSION_REQUEST = 0x534F
         private const val POLL_INTERVAL_MS = 300L
+        private const val ACTION_CANCEL_DOWNLOAD = "com.panditfx.sonora.CANCEL_DOWNLOAD"
+        private const val EXTRA_DOWNLOAD_ID = "downloadId"
+        private const val EXTRA_CANCEL_ALL = "cancelAll"
+        private const val CANCEL_REQUEST_CODE = 0x5341
+        private const val CANCEL_ALL_REQUEST_CODE = 0x5342
     }
 }

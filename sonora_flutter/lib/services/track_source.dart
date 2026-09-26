@@ -55,27 +55,55 @@ class TrackSourceResolver {
         'This YouTube result has no valid video id.',
       );
     }
-    try {
-      final stream = await (youtubeGateway ?? YoutubeExplodeGateway())
-          .resolveAudio(videoId)
-          .timeout(const Duration(seconds: 20));
-      return ResolvedTrackSource(
-        url: stream.url,
-        extension: stream.format.fileExtension,
-        contentLength: stream.contentLength,
-        headers: stream.headers,
-      );
-    } on YouTubeAudioUnavailableException {
-      throw const TrackSourceResolutionException(
-        'This video has no supported audio-only stream.',
-      );
-    } catch (_) {
-      throw const TrackSourceResolutionException(
-        'Could not resolve this YouTube video. It may be unavailable or region-restricted.',
-      );
+    final gateway = youtubeGateway ?? YoutubeExplodeGateway();
+    var failure = YouTubeResolveFailure.unknown;
+    for (var attempt = 0; attempt < youtubeResolveAttempts; attempt++) {
+      try {
+        final stream = await gateway
+            .resolveAudio(videoId)
+            .timeout(youtubeResolveTimeout);
+        return ResolvedTrackSource(
+          url: stream.url,
+          extension: stream.format.fileExtension,
+          contentLength: stream.contentLength,
+          headers: stream.headers,
+        );
+      } on YouTubeAudioUnavailableException {
+        // A property of the video itself, so it is reported directly instead
+        // of being retried.
+        throw const TrackSourceResolutionException(
+          'This video has no supported audio-only stream.',
+        );
+      } catch (error, stackTrace) {
+        failure = error is YouTubeResolutionException
+            ? error.failure
+            : classifyYouTubeFailure(error);
+        logYouTubeFailure(videoId, error, stackTrace);
+        // Rate limits, bot checks and YouTube's own bad moments usually clear
+        // on a second attempt, and a resolve that works takes well under a
+        // second, so one retry is cheap. A private or region-locked video
+        // fails identically again, so it is not retried.
+        if (!failure.isTransient) break;
+      }
     }
+    throw TrackSourceResolutionException(youtubeFailureMessage(failure));
   }
 }
+
+/// One retry. Enough to ride out a rate limit or a bot check, short enough
+/// that a permanently broken video does not leave the player hanging.
+const youtubeResolveAttempts = 2;
+
+/// Long enough for the extractor to exhaust its own recovery before Sonora
+/// gives up on it.
+///
+/// The extractor retries a failing request up to five times with backoff and
+/// then re-runs the whole lookup through its TV client, so a slow resolve
+/// legitimately takes tens of seconds. The previous 20s budget cut that
+/// recovery short and the resulting timeout was then reported to the user as
+/// an unavailable video, turning a request that was about to succeed into a
+/// hard failure.
+const youtubeResolveTimeout = Duration(seconds: 40);
 
 bool isYouTubeTrack(MediaItem track) =>
     track.extras?['source'] == youtubeSource ||
