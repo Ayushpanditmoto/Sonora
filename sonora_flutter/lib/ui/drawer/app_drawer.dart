@@ -436,4 +436,3 @@ class _GitHubCard extends StatelessWidget {
   }
 }
 
-/// Opens the app drawer from a page-specific custom header.
