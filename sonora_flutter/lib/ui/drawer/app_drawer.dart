@@ -54,23 +54,29 @@ class AppDrawer extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _DrawerHeader(onClose: () => Navigator.of(context).pop()),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             for (final (index, destination) in _drawerDestinations.indexed)
-              _DrawerNavigationItem(
-                key: ValueKey('drawer-${destination.label.toLowerCase()}'),
-                label: destination.label,
-                icon: index == selectedIndex
-                    ? destination.selectedIcon
-                    : destination.icon,
-                selected: index == selectedIndex,
-                onTap: () {
-                  onDestinationSelected(index);
-                  Navigator.of(context).pop();
-                },
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: _DrawerNavigationItem(
+                  key: ValueKey('drawer-${destination.label.toLowerCase()}'),
+                  label: destination.label,
+                  icon: index == selectedIndex
+                      ? destination.selectedIcon
+                      : destination.icon,
+                  selected: index == selectedIndex,
+                  onTap: () {
+                    onDestinationSelected(index);
+                    Navigator.of(context).pop();
+                  },
+                ),
               ),
-            const Spacer(),
+            const SizedBox(height: 14),
             const _DrawerFooter(),
-            const SizedBox(height: 8),
+            // The spare height falls below the content rather than above it, so
+            // the panel reads as a list that ends, not as items trapped between
+            // a banner and a footer.
+            const Spacer(),
           ],
         ),
       ),
@@ -93,7 +99,7 @@ class _DrawerHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+      padding: const EdgeInsets.fromLTRB(20, 20, 12, 20),
       decoration: const BoxDecoration(
         color: SonoraColors.brandWash,
         border: Border(bottom: BorderSide(color: SonoraColors.outline)),
@@ -101,8 +107,8 @@ class _DrawerHeader extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 38,
-            height: 38,
+            width: 44,
+            height: 44,
             decoration: const BoxDecoration(
               color: SonoraColors.green,
               borderRadius: SonoraRadius.chip,
@@ -110,10 +116,10 @@ class _DrawerHeader extends StatelessWidget {
             child: const Icon(
               Icons.graphic_eq_rounded,
               color: Colors.black,
-              size: 22,
+              size: 25,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 14),
           const Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -122,17 +128,20 @@ class _DrawerHeader extends StatelessWidget {
                 Text(
                   'Sonora',
                   style: TextStyle(
-                    fontSize: 17,
+                    fontSize: 19,
                     fontWeight: FontWeight.w800,
-                    letterSpacing: -0.2,
+                    letterSpacing: -0.3,
+                    height: 1.1,
                   ),
                 ),
+                SizedBox(height: 3),
                 Text(
                   'Open-source music',
                   style: TextStyle(
-                    fontSize: 11.5,
+                    fontSize: 12.5,
                     fontWeight: FontWeight.w500,
                     color: SonoraColors.muted,
+                    height: 1.2,
                   ),
                 ),
               ],
@@ -141,9 +150,8 @@ class _DrawerHeader extends StatelessWidget {
           IconButton(
             tooltip: 'Close menu',
             onPressed: onClose,
-            icon: const Icon(Icons.close_rounded, size: 19),
+            icon: const Icon(Icons.close_rounded, size: 20),
             color: SonoraColors.muted,
-            visualDensity: VisualDensity.compact,
           ),
         ],
       ),
@@ -197,27 +205,28 @@ class _DrawerNavigationItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Material(
         color: selected ? SonoraColors.selected : Colors.transparent,
         borderRadius: SonoraRadius.control,
         child: InkWell(
           onTap: onTap,
           borderRadius: SonoraRadius.control,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Container(
+            height: 52,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
                 Icon(
                   icon.icon,
-                  size: 21,
+                  size: 23,
                   color: selected ? SonoraColors.green : SonoraColors.muted,
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 16),
                 Text(
                   label,
                   style: TextStyle(
-                    fontSize: 15,
+                    fontSize: 15.5,
                     fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                     color: selected ? SonoraColors.text : SonoraColors.muted,
                   ),
