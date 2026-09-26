@@ -7,6 +7,7 @@ import 'package:sonora_flutter/player/sonora_audio_handler.dart';
 import 'package:sonora_flutter/services/music_api.dart';
 import 'package:sonora_flutter/state/recent_store.dart';
 import 'package:sonora_flutter/ui/app_shell.dart';
+import 'package:sonora_flutter/ui/components/track_tile.dart';
 import 'package:sonora_flutter/ui/sonora_theme.dart';
 
 import 'support/fake_audio_player.dart';
