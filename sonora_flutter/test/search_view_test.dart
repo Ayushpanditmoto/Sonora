@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sonora_flutter/services/music_api.dart';
 import 'package:sonora_flutter/services/youtube_api.dart';
-import 'package:sonora_flutter/ui/app_shell.dart';
+import 'package:sonora_flutter/ui/search/search_view.dart';
 import 'package:sonora_flutter/ui/sonora_theme.dart';
 
 const _art = 'assets/art/neon-rain.png';

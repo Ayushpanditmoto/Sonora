@@ -7,7 +7,7 @@ import 'package:sonora_flutter/services/download_store.dart';
 import 'package:sonora_flutter/state/favorite_store.dart';
 import 'package:sonora_flutter/state/recent_store.dart';
 import 'package:sonora_flutter/state/download_store_provider.dart';
-import 'package:sonora_flutter/ui/app_shell.dart';
+import 'package:sonora_flutter/ui/library/library_view.dart';
 import 'package:sonora_flutter/ui/sonora_theme.dart';
 
 const _art = 'assets/art/neon-rain.png';

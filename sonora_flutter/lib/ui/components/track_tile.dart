@@ -10,6 +10,10 @@ import '../../state/play_and_remember.dart';
 import '../sonora_theme.dart';
 import 'artwork.dart';
 
+/// Deletes a download only after [context] has confirmed the action.
+///
+/// This is used by the row's explicit Remove control. A swipe is intentionally
+/// not a delete gesture: the row remains until the user confirms here.
 Future<void> removeDownload(
   BuildContext context,
   DownloadStore store,
@@ -35,6 +39,8 @@ Future<void> removeDownload(
   if (confirmed ?? false) await store.remove(track.id);
 }
 
+/// Formats the API's `playCount` without pretending it is a view count.
+/// Returns null when the endpoint did not provide a usable value.
 String? playCountText(MediaItem track) {
   final value = track.extras?['playCount'];
   final count = switch (value) {
