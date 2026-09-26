@@ -64,7 +64,16 @@ class DownloadStore extends ChangeNotifier {
     _notifier.onCancel = (id) => id == null ? cancelAll() : cancel(id);
   }
 
-  static const _prefsKey = 'sonora.downloads';
+  /// Downloads recorded under this key are matched to a track by id, so it
+  /// moves whenever the ids the catalogue hands out change shape.
+  static const _prefsKey = 'sonora.downloads.v2';
+
+  /// The key downloads were stored under while Sonora read the
+  /// `saavn.sumit.co` proxy, which identified a track by number where
+  /// JioSaavn uses an opaque token. Nothing recorded under it can be matched to
+  /// a track any more, so it is read once to clean up the files and then
+  /// dropped.
+  static const _legacyPrefsKey = 'sonora.downloads';
 
   final DownloadFetcher _fetch;
   final Future<Directory> Function() _directory;
@@ -205,6 +214,7 @@ class DownloadStore extends ChangeNotifier {
   /// that cannot be played.
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
+    await _discardLegacyDownloads(prefs);
     final stored = prefs.getStringList(_prefsKey) ?? const [];
     for (final entry in stored) {
       final decoded = _decodeEntry(entry);
@@ -232,6 +242,21 @@ class DownloadStore extends ChangeNotifier {
       await _save();
     }
     notifyListeners();
+  }
+
+  /// Removes the audio recorded under [_legacyPrefsKey] and forgets the key.
+  ///
+  /// Those entries can never be matched to a track again, but the files are
+  /// still the app's own, and leaving them behind would quietly keep taking up
+  /// the user's storage with nothing on screen referring to them.
+  Future<void> _discardLegacyDownloads(SharedPreferences prefs) async {
+    final legacy = prefs.getStringList(_legacyPrefsKey);
+    if (legacy == null) return;
+    for (final entry in legacy) {
+      final path = _decodeEntry(entry)?.$3;
+      if (path != null) await _deleteQuietly(File(path));
+    }
+    await prefs.remove(_legacyPrefsKey);
   }
 
   /// Downloads [track] so it can be played without a connection.

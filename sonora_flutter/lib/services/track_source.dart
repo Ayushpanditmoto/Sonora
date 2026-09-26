@@ -125,7 +125,23 @@ bool canResolveTrackSource(MediaItem track) =>
 /// synchronous path to preserve the existing Saavn load timing.
 ResolvedTrackSource? directTrackSource(MediaItem track) {
   final url = _directUrl(track);
-  return url == null ? null : ResolvedTrackSource(url: url, extension: 'mp3');
+  return url == null
+      ? null
+      : ResolvedTrackSource(url: url, extension: _extensionFor(url));
+}
+
+/// The media container a url points at.
+///
+/// JioSaavn serves its audio in an `audio/mp4` container rather than the `.mp3`
+/// this used to assume. Playback sniffs the real type, but a download is named
+/// after this, so the container has to be read off the url rather than guessed
+/// or a correctly downloaded track would be written out under the wrong name.
+String _extensionFor(Uri url) {
+  final name = url.pathSegments.isEmpty ? '' : url.pathSegments.last;
+  final dot = name.lastIndexOf('.');
+  if (dot <= 0) return 'mp3';
+  final extension = name.substring(dot + 1).toLowerCase();
+  return RegExp(r'^[a-z0-9]+$').hasMatch(extension) ? extension : 'mp3';
 }
 
 Uri? _directUrl(MediaItem track) {

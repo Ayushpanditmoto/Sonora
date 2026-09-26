@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'dart:io';
 
@@ -6,6 +7,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sonora_flutter/player/media_item_codec.dart';
 import 'package:sonora_flutter/services/download_notification.dart';
 import 'package:sonora_flutter/services/download_store.dart';
 import 'package:sonora_flutter/services/track_source.dart';
@@ -52,6 +54,32 @@ void main() {
     resolveStream: resolveStream,
     segmentedFetcher: segmentedFetcher,
   );
+
+  test('downloads from before the JioSaavn switch are dropped, files and all', () async {
+    // The old `saavn.sumit.co` proxy identified a track by number where
+    // JioSaavn uses an opaque token, so nothing recorded under the old key can
+    // ever be matched to a track again.
+    final orphan = File('${dir.path}/1139549.mp3')
+      ..writeAsBytesSync(mediaPayload(12));
+    SharedPreferences.setMockInitialValues({
+      'sonora.downloads': [
+        jsonEncode({
+          'track': encodeTrack(track('1139549')),
+          'bytes': 12,
+          'path': orphan.path,
+        }),
+      ],
+    });
+
+    final store = storeWith();
+    await store.load();
+
+    expect(store.tracks, isEmpty);
+    // The file is the app's own, and nothing on screen refers to it any more.
+    expect(orphan.existsSync(), isFalse);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getStringList('sonora.downloads'), isNull);
+  });
 
   test('a download is kept, with its size, and survives a restart', () async {
     final store = storeWith();

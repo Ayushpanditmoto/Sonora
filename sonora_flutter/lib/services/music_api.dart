@@ -1,6 +1,8 @@
 import 'package:audio_service/audio_service.dart';
-import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'saavn_gateway.dart';
+import 'saavn_media_url.dart';
 
 final musicRepositoryProvider = Provider<MusicRepository>(
   (ref) => MusicRepository(),
@@ -14,23 +16,19 @@ final catalogProvider = FutureProvider<List<MediaItem>>(
 final albumsProvider = FutureProvider<List<MusicCollection>>(
   (ref) => ref
       .watch(musicRepositoryProvider)
-      .searchCollections('/search/albums', 'Hindi', CollectionKind.album),
+      .searchCollections('Hindi', CollectionKind.album),
 );
 
 final artistsProvider = FutureProvider<List<MusicCollection>>(
   (ref) => ref
       .watch(musicRepositoryProvider)
-      .searchCollections(
-        '/search/artists',
-        'Arijit Singh',
-        CollectionKind.artist,
-      ),
+      .searchCollections('Arijit Singh', CollectionKind.artist),
 );
 
 final playlistsProvider = FutureProvider<List<MusicCollection>>(
   (ref) => ref
       .watch(musicRepositoryProvider)
-      .searchCollections('/search/playlists', 'hits', CollectionKind.playlist),
+      .searchCollections('hits', CollectionKind.playlist),
 );
 
 final searchResultsProvider = FutureProvider.family<List<MediaItem>, String>(
@@ -41,19 +39,11 @@ final searchResultsProvider = FutureProvider.family<List<MediaItem>, String>(
 typedef CollectionSearchKey = ({String query, CollectionKind kind});
 
 final searchCollectionsProvider =
-    FutureProvider.family<List<MusicCollection>, CollectionSearchKey>((
-      ref,
-      key,
-    ) {
-      final path = switch (key.kind) {
-        CollectionKind.album => '/search/albums',
-        CollectionKind.artist => '/search/artists',
-        CollectionKind.playlist => '/search/playlists',
-      };
-      return ref
+    FutureProvider.family<List<MusicCollection>, CollectionSearchKey>(
+      (ref, key) => ref
           .watch(musicRepositoryProvider)
-          .searchCollections(path, key.query, key.kind, limit: 20);
-    });
+          .searchCollections(key.query, key.kind, limit: 20),
+    );
 
 /// Identifies a collection to fetch songs for. A record gives it value
 /// equality, which Riverpod families require.
@@ -65,144 +55,223 @@ final collectionTracksProvider =
           ref.watch(musicRepositoryProvider).collectionSongs(key.id, key.kind),
     );
 
+/// Reads the JioSaavn catalogue and maps it onto the [MediaItem]s the player
+/// and the rest of the UI already speak.
+///
+/// JioSaavn identifies a song by an opaque token rather than a number, sends
+/// its media url DES encrypted under `more_info.encrypted_media_url` instead of
+/// as a ready url, and names its fields differently from the `saavn.sumit.co`
+/// proxy this replaced. All of that is absorbed here so nothing above this
+/// class has to know about it.
 class MusicRepository {
-  MusicRepository({Dio? client})
-    : _client =
-          client ??
-          Dio(
-            BaseOptions(
-              baseUrl: 'https://saavn.sumit.co/api',
-              connectTimeout: const Duration(seconds: 15),
-              receiveTimeout: const Duration(seconds: 20),
-            ),
-          );
+  MusicRepository({SaavnGateway? gateway})
+    : _gateway = gateway ?? SaavnPlayGateway();
 
-  final Dio _client;
+  final SaavnGateway _gateway;
 
+  /// The albums, artists or playlists matching [query].
   Future<List<MusicCollection>> searchCollections(
-    String path,
     String query,
     CollectionKind kind, {
     int limit = 10,
   }) async {
-    final response = await _client.get<Map<String, dynamic>>(
-      path,
-      queryParameters: {'query': query, 'page': 0, 'limit': limit},
-    );
-    final payload = response.data?['data'] as Map<String, dynamic>?;
-    final results = payload?['results'] as List<dynamic>? ?? const [];
-    return results
-        .whereType<Map<String, dynamic>>()
-        .map((json) {
-          final artists = json['artists'] as Map<String, dynamic>?;
-          final primary = artists?['primary'] as List<dynamic>? ?? const [];
-          final names = primary
-              .whereType<Map<String, dynamic>>()
-              .map((artist) => artist['name'] as String? ?? '')
-              .where((name) => name.isNotEmpty)
-              .join(', ');
-          final images = json['image'] as List<dynamic>? ?? const [];
-          final subtitle = switch (kind) {
-            CollectionKind.album => names.isEmpty ? 'Album' : names,
-            CollectionKind.artist => json['role'] as String? ?? 'Artist',
-            CollectionKind.playlist => '${json['songCount'] ?? 0} songs',
-          };
-          return MusicCollection(
-            id: json['id'] as String? ?? '',
-            name: _decode(json['name'] as String? ?? 'Untitled'),
-            imageUrl: _lastUrl(images),
-            subtitle: _decode(subtitle),
-            kind: kind,
-          );
-        })
+    final payload = switch (kind) {
+      CollectionKind.album => await _gateway.searchAlbums(query, limit: limit),
+      CollectionKind.artist => await _gateway.searchArtists(
+        query,
+        limit: limit,
+      ),
+      CollectionKind.playlist => await _gateway.searchPlaylists(
+        query,
+        limit: limit,
+      ),
+    };
+    return _results(payload)
+        .map((json) => _toCollection(json, kind))
         .where((item) => item.id.isNotEmpty)
         .toList(growable: false);
   }
 
+  /// The songs matching [query].
   Future<List<MediaItem>> searchSongs(
     String query, {
     int page = 0,
     int limit = 20,
-  }) async {
-    final response = await _client.get<Map<String, dynamic>>(
-      '/search/songs',
-      queryParameters: {'query': query, 'page': page, 'limit': limit},
-    );
-    final payload = response.data?['data'] as Map<String, dynamic>?;
-    final results = payload?['results'] as List<dynamic>? ?? const [];
-    return _playable(results);
-  }
+  }) async => _playable(
+    _results(await _gateway.searchSongs(query, page: page, limit: limit)),
+  );
 
   /// Loads every song of the collection [id].
   ///
-  /// Albums return all their songs in `songs`, artists return their ten most
-  /// played tracks in `topSongs`, and playlists honour [limit].
+  /// An album returns its full track list, a playlist its tracks, and an
+  /// artist the ten tracks JioSaavn ranks highest. None of the three accept a
+  /// caller supplied page size, so the collection is as long as JioSaavn says.
   Future<List<MediaItem>> collectionSongs(
     String id,
-    CollectionKind kind, {
-    int limit = 50,
-  }) async {
-    final (path, field) = switch (kind) {
-      CollectionKind.album => ('/albums', 'songs'),
-      CollectionKind.playlist => ('/playlists', 'songs'),
-      CollectionKind.artist => ('/artists', 'topSongs'),
+    CollectionKind kind,
+  ) async {
+    final payload = switch (kind) {
+      CollectionKind.album => await _gateway.albumDetails(id),
+      CollectionKind.playlist => await _gateway.playlistDetails(id),
+      CollectionKind.artist => await _gateway.artistTopSongs(id),
     };
-    final response = await _client.get<Map<String, dynamic>>(
-      path,
-      queryParameters: {'id': id, 'page': 0, 'limit': limit},
-    );
-    final payload = response.data?['data'] as Map<String, dynamic>?;
-    return _playable(payload?[field] as List<dynamic>? ?? const []);
+    return _playable(_songs(payload));
   }
 
-  /// Maps raw song json to [MediaItem]s, dropping the ones without a stream
-  /// url because they cannot be played.
-  List<MediaItem> _playable(List<dynamic> songs) => songs
-      .whereType<Map<String, dynamic>>()
+  /// The result list of a search response.
+  List<Map<String, dynamic>> _results(Map<String, dynamic> payload) =>
+      _list(payload['results']);
+
+  /// The tracks of a collection response.
+  ///
+  /// Album and playlist details carry them in `list`, while an artist's ranked
+  /// tracks nest them under `topSongs.songs`.
+  List<Map<String, dynamic>> _songs(Map<String, dynamic> payload) {
+    final topSongs = payload['topSongs'];
+    if (topSongs is Map) {
+      final nested = _list(topSongs['songs']);
+      if (nested.isNotEmpty) return nested;
+    }
+    final direct = _list(payload['songs']);
+    return direct.isNotEmpty ? direct : _list(payload['list']);
+  }
+
+  List<Map<String, dynamic>> _list(Object? value) =>
+      (value as List?)?.whereType<Map<String, dynamic>>().toList() ??
+      const <Map<String, dynamic>>[];
+
+  /// Maps song json to [MediaItem]s, dropping the ones without a media url
+  /// because they cannot be played.
+  List<MediaItem> _playable(List<Map<String, dynamic>> songs) => songs
       .map(_toMediaItem)
       .where((item) => (item.extras?['url'] as String? ?? '').isNotEmpty)
       .toList(growable: false);
 
   MediaItem _toMediaItem(Map<String, dynamic> json) {
-    final album = json['album'] as Map<String, dynamic>?;
-    final artists = json['artists'] as Map<String, dynamic>?;
-    final primary = artists?['primary'] as List<dynamic>? ?? const [];
-    final artistNames = primary
-        .whereType<Map<String, dynamic>>()
-        .map((artist) => artist['name'] as String? ?? '')
-        .where((name) => name.isNotEmpty)
-        .join(', ');
-    final images = json['image'] as List<dynamic>? ?? const [];
-    final downloads = json['downloadUrl'] as List<dynamic>? ?? const [];
-    final artUrl = _lastUrl(images);
-    final streamUrl = _lastUrl(downloads);
+    final moreInfo = _map(json['more_info']);
+    final streamUrl = bestMediaUrl(moreInfo) ?? '';
+    final artUrl = _artUrl(json['image']);
     final id = json['id'] as String? ?? streamUrl;
+    final artist = _artistNames(moreInfo, json);
 
     return MediaItem(
       id: id,
-      title: _decode(json['name'] as String? ?? 'Unknown track'),
-      artist: artistNames.isEmpty ? 'Unknown artist' : _decode(artistNames),
-      album: _decode(album?['name'] as String? ?? 'Single'),
-      duration: Duration(seconds: (json['duration'] as num?)?.round() ?? 0),
+      // JioSaavn leaves html entities in its text, for example
+      // `Gehra Hua (From &quot;Dhurandhar&quot;)`, so it is decoded before it
+      // reaches a label.
+      title: _decode(
+        _text(json['title'] ?? json['name'] ?? json['song']) ?? 'Unknown track',
+      ),
+      artist: artist.isEmpty ? 'Unknown artist' : artist,
+      album: _decode(_text(moreInfo['album']) ?? 'Single'),
+      duration: _duration(moreInfo['duration'] ?? json['duration']),
       artUri: artUrl.isEmpty ? null : Uri.tryParse(artUrl),
       extras: {
         'url': streamUrl,
         'art': artUrl,
         'accent': _accentFor(id),
         'language': json['language'],
-        'playCount': json['playCount'],
+        'playCount': json['play_count'] ?? json['playCount'],
       },
     );
   }
 
-  String _lastUrl(List<dynamic> values) {
-    for (final value in values.reversed) {
-      if (value is Map<String, dynamic> && value['url'] is String) {
-        return value['url'] as String;
-      }
+  MusicCollection _toCollection(
+    Map<String, dynamic> json,
+    CollectionKind kind,
+  ) {
+    final moreInfo = _map(json['more_info']);
+    final id = json['id'] as String? ?? '';
+    final imageUrl = _artUrl(json['image']);
+    final credits = _artistNames(moreInfo, json);
+    final subtitle = switch (kind) {
+      CollectionKind.album => credits.isEmpty ? 'Album' : credits,
+      CollectionKind.artist => _text(json['role']) ?? 'Artist',
+      CollectionKind.playlist => '${_songCount(json, moreInfo)} songs',
+    };
+
+    return MusicCollection(
+      id: id,
+      name: _decode(
+        _text(json['name'] ?? json['title'] ?? json['song']) ?? 'Untitled',
+      ),
+      imageUrl: imageUrl,
+      subtitle: subtitle,
+      kind: kind,
+    );
+  }
+
+  /// The credited artists, joined for display.
+  ///
+  /// JioSaavn spells the map `artistMap`, while the models shipped alongside it
+  /// expect `artist_map`, so both spellings are accepted. A record that credits
+  /// nobody structurally falls back to the leading part of the
+  /// `artist - title` subtitle.
+  String _artistNames(
+    Map<String, dynamic> moreInfo,
+    Map<String, dynamic> json,
+  ) {
+    final map = moreInfo['artistMap'] ?? moreInfo['artist_map'];
+    final names = map is Map
+        ? (map['primary_artists'] as List? ?? const [])
+              .whereType<Map>()
+              .map((artist) => _text(artist['name']) ?? '')
+              .where((name) => name.isNotEmpty)
+              .toList()
+        : const <String>[];
+    if (names.isNotEmpty) return _decode(names.join(', '));
+
+    final subtitle = _text(json['subtitle']);
+    if (subtitle == null) return '';
+    return _decode(subtitle.split(RegExp(r'\s+[-–]\s+')).first.trim());
+  }
+
+  /// How many tracks the collection holds.
+  String _songCount(Map<String, dynamic> json, Map<String, dynamic> moreInfo) {
+    final value =
+        moreInfo['song_count'] ?? json['song_count'] ?? json['list_count'];
+    return switch (value) {
+      final num number => number.round().toString(),
+      final String text => text.isEmpty ? '0' : text,
+      _ => '0',
+    };
+  }
+
+  /// The artwork url, preferring the largest crop JioSaavn serves.
+  ///
+  /// Search responses carry the 150x150 variant, which is soft on a phone, and
+  /// the same path serves a 500x500 one. A shape other than a plain url is
+  /// tolerated, because not every response uses one.
+  String _artUrl(Object? image) {
+    if (image is String) {
+      if (image.isEmpty) return '';
+      return image.contains('150x150')
+          ? image.replaceAll('150x150', '500x500')
+          : image;
+    }
+    for (final value in (image as List?)?.reversed ?? const <Object?>[]) {
+      if (value is Map && value['url'] is String) return value['url'] as String;
     }
     return '';
   }
+
+  Map<String, dynamic> _map(Object? value) =>
+      value is Map ? value.cast<String, dynamic>() : const <String, dynamic>{};
+
+  String? _text(Object? value) {
+    if (value == null) return null;
+    final text = value is String ? value : value.toString();
+    return text.isEmpty ? null : text;
+  }
+
+  /// A track length, which JioSaavn reports as a string of seconds.
+  Duration _duration(Object? value) => Duration(
+    seconds: switch (value) {
+      final num number => number.round(),
+      final String text => int.tryParse(text) ?? 0,
+      _ => 0,
+    },
+  );
 
   int _accentFor(String id) {
     const accents = [

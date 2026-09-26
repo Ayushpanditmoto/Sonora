@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.2+3
+version: 1.0.3+4
 
 environment:
   sdk: ^3.13.2
@@ -48,6 +48,13 @@ dependencies:
   connectivity_plus: ^7.3.1
 
   youtube_explode_dart: ^3.1.0
+
+  # JioSaavn client. Replaces the third-party `saavn.sumit.co` proxy, which
+  # started answering 429 and is no longer usable.
+  saavn_play: ^1.2.0
+  # Single DES, used to decrypt the media urls the JioSaavn API hands back.
+  # pointycastle cannot do this, because as of 4.0 it only ships Triple DES.
+  dart_des: ^1.0.2
 
 dev_dependencies:
   flutter_test:
