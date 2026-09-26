@@ -11,6 +11,7 @@ import 'package:sonora_flutter/player/system_volume.dart';
 import 'package:sonora_flutter/services/music_api.dart';
 import 'package:sonora_flutter/services/track_source.dart';
 import 'package:sonora_flutter/ui/app_shell.dart';
+import 'package:sonora_flutter/ui/components/artwork.dart';
 import 'package:sonora_flutter/ui/sonora_theme.dart';
 
 import 'support/fake_audio_player.dart';
