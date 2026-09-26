@@ -13,6 +13,7 @@ import 'package:sonora_flutter/services/music_api.dart';
 import 'package:sonora_flutter/state/download_store_provider.dart';
 import 'package:sonora_flutter/ui/app_shell.dart';
 import 'package:sonora_flutter/ui/library/library_view.dart';
+import 'package:sonora_flutter/ui/player/now_playing.dart';
 import 'package:sonora_flutter/ui/sonora_theme.dart';
 
 import 'support/fake_audio_player.dart';
@@ -591,6 +592,60 @@ void main() {
     // in "Recently played").
     expect(find.text('ALBUM'), findsNothing);
     expect(find.text('Play all'), findsNothing);
+  });
+
+  testWidgets('a playlist keeps the mini player clear of the system bar', (
+    tester,
+  ) async {
+    useTestViewport(tester);
+    SharedPreferences.setMockInitialValues({});
+    // The app runs edge to edge, so a pushed page has to add the system inset
+    // itself. Without it the mini player is drawn under the gesture pill.
+    const inset = 48.0;
+    const screenHeight = 3200.0;
+    tester.view.padding = const FakeViewPadding(bottom: inset);
+
+    final player = FakeAudioPlayer();
+    final handler = SonoraAudioHandler(player: player);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          audioHandlerProvider.overrideWithValue(handler),
+          catalogProvider.overrideWith((ref) async => _catalog),
+          playlistsProvider.overrideWith((ref) async => const []),
+          albumsProvider.overrideWith((ref) async => [_album]),
+          artistsProvider.overrideWith((ref) async => const []),
+          collectionTracksProvider.overrideWith(
+            (ref, key) async => _albumSongs,
+          ),
+        ],
+        child: MaterialApp(theme: SonoraTheme.dark, home: const AppShell()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Midnight Static'));
+    await tester.pumpAndSettle();
+
+    // Playback is started from the collection page itself rather than from a
+    // catalog row, so the test does not depend on a track already playing from
+    // an earlier test, which would put the same title in the mini player too.
+    await tester.tap(find.text('Play all'));
+    player.finishLoad();
+    await tester.pumpAndSettle();
+
+    expect(find.text('ALBUM'), findsOneWidget);
+    expect(find.byType(MiniPlayer), findsOneWidget);
+
+    // The row's bottom edge sits above the system bar rather than under it.
+    final bottom = tester.getBottomLeft(find.byType(MiniPlayer)).dy;
+    expect(
+      bottom,
+      lessThanOrEqualTo(screenHeight - inset),
+      reason:
+          'the mini player must not be drawn under the system navigation bar',
+    );
   });
 }
 

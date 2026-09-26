@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../player/sonora_audio_handler.dart';
 import '../../services/download_store.dart';
 import '../../state/download_store_provider.dart';
 import '../../state/play_and_remember.dart';
-import '../player/now_playing.dart';
+import '../player/mini_player_bar.dart';
 import '../components/track_tile.dart';
 import '../formatting.dart';
 import '../sonora_theme.dart';
@@ -18,7 +17,6 @@ class _DownloadsView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final store = ref.watch(downloadStoreProvider);
-    final hasTrack = ref.watch(currentTrackProvider).value != null;
     return ListenableBuilder(
       listenable: store,
       builder: (context, _) {
@@ -133,12 +131,7 @@ class _DownloadsView extends ConsumerWidget {
               ),
             ),
           ),
-          bottomNavigationBar: hasTrack
-              ? const Padding(
-                  padding: EdgeInsets.fromLTRB(8, 4, 8, 4),
-                  child: MiniPlayer(),
-                )
-              : null,
+          bottomNavigationBar: const MiniPlayerBar(),
         );
       },
     );
