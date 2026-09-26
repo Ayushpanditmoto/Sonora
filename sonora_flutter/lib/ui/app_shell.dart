@@ -5,14 +5,16 @@ import 'package:audio_service/audio_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../player/media_item_codec.dart';
 import '../player/sonora_audio_handler.dart';
 import '../services/download_store.dart';
 import '../services/music_api.dart';
 import '../services/youtube_api.dart';
+import '../state/download_store_provider.dart';
+import '../state/favorite_store.dart';
+import '../state/play_and_remember.dart';
+import '../state/recent_store.dart';
 import 'shimmer.dart';
 import 'sonora_theme.dart';
 
@@ -29,161 +31,6 @@ MediaItem pickRandomTrack(List<MediaItem> tracks, {math.Random? random}) {
     throw ArgumentError.value(tracks, 'tracks', 'must not be empty');
   }
   return tracks[(random ?? math.Random()).nextInt(tracks.length)];
-}
-
-final favoriteStoreProvider = Provider<FavoriteStore>((ref) {
-  final store = FavoriteStore();
-  unawaited(store.load());
-  return store;
-});
-final recentStoreProvider = Provider<RecentStore>((ref) {
-  final store = RecentStore();
-  unawaited(store.load());
-  return store;
-});
-
-/// Tracks kept on the device, shared with the player so a downloaded track is
-/// played from its own file rather than the network.
-///
-/// The real store is created in `main` and passed in, because the player has to
-/// know where a track's audio is before the first load. The fallback keeps the
-/// UI usable in a test or preview that only overrode the handler.
-final downloadStoreProvider = Provider<DownloadStore>((ref) {
-  final store = DownloadStore();
-  unawaited(store.load());
-  return store;
-});
-
-/// Liked songs, restored from and saved to local storage.
-///
-/// The whole track is kept rather than only its id, so a song liked from
-/// search, an album or a playlist still appears under Saved tracks even though
-/// it is not part of the home catalogue.
-class FavoriteStore extends ChangeNotifier {
-  static const _prefsKey = 'sonora.favorites';
-
-  final Map<String, MediaItem> _tracks = {};
-  bool _ready = false;
-  bool _changedWhileLoading = false;
-
-  bool contains(String id) => _tracks.containsKey(id);
-
-  int get length => _tracks.length;
-
-  /// The liked songs, most recently liked first.
-  List<MediaItem> get tracks => _tracks.values.toList(growable: false);
-
-  /// Restores the saved songs. Called once when the provider is created.
-  Future<void> load() async {
-    final prefs = await SharedPreferences.getInstance();
-    // Merged rather than replaced so a tap that lands while the stored songs
-    // are still loading is not lost.
-    for (final entry in prefs.getStringList(_prefsKey) ?? const <String>[]) {
-      final track = decodeTrack(entry);
-      if (track != null) _tracks[track.id] = track;
-    }
-    _ready = true;
-    notifyListeners();
-    if (_changedWhileLoading) await _save();
-  }
-
-  /// Likes [track], or removes it when it is already liked.
-  void toggle(MediaItem track) {
-    if (_tracks.remove(track.id) == null) _tracks[track.id] = track;
-    notifyListeners();
-    if (_ready) {
-      unawaited(_save());
-    } else {
-      _changedWhileLoading = true;
-    }
-  }
-
-  Future<void> _save() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_prefsKey, [
-      // Sorted by id so the stored list is in a stable order between saves.
-      for (final id in _tracks.keys.toList()..sort()) encodeTrack(_tracks[id]!),
-    ]);
-  }
-}
-
-/// Recently played tracks, restored from and saved to local storage.
-class RecentStore extends ChangeNotifier {
-  static const _prefsKey = 'sonora.recents';
-  static const _maxTracks = 50;
-
-  final List<MediaItem> _tracks = [];
-  bool _ready = false;
-  bool _changedWhileLoading = false;
-
-  List<MediaItem> get tracks => List.unmodifiable(_tracks);
-
-  /// Restores the saved tracks. Called once when the provider is created.
-  Future<void> load() async {
-    final prefs = await SharedPreferences.getInstance();
-    for (final entry in prefs.getStringList(_prefsKey) ?? const <String>[]) {
-      final track = decodeTrack(entry);
-      if (track != null && !_tracks.any((item) => item.id == track.id)) {
-        _tracks.add(track);
-      }
-    }
-    if (_tracks.length > _maxTracks) {
-      _tracks.removeRange(_maxTracks, _tracks.length);
-    }
-    _ready = true;
-    notifyListeners();
-    if (_changedWhileLoading) await _save();
-  }
-
-  /// Puts [track] at the front of the history, moving it there rather than
-  /// duplicating it so the same song never shows up twice.
-  void add(MediaItem track) {
-    _tracks.removeWhere((item) => item.id == track.id);
-    _tracks.insert(0, track);
-    if (_tracks.length > _maxTracks) _tracks.removeLast();
-    _changed();
-  }
-
-  /// Drops a single track from the history.
-  void remove(String id) {
-    final before = _tracks.length;
-    _tracks.removeWhere((item) => item.id == id);
-    if (_tracks.length == before) return;
-    _changed();
-  }
-
-  /// Empties the history.
-  void clear() {
-    if (_tracks.isEmpty) return;
-    _tracks.clear();
-    _changed();
-  }
-
-  void _changed() {
-    notifyListeners();
-    // A tap that lands before the stored tracks are read back still applies to
-    // the in-memory list, and is flushed once loading finishes.
-    if (_ready) {
-      unawaited(_save());
-    } else {
-      _changedWhileLoading = true;
-    }
-  }
-
-  Future<void> _save() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_prefsKey, [
-      for (final track in _tracks) encodeTrack(track),
-    ]);
-  }
-}
-
-void playAndRemember(WidgetRef ref, MediaItem track, {List<MediaItem>? queue}) {
-  ref.read(recentStoreProvider).add(track);
-  // Queue replacement and track selection are one operation. Starting them as
-  // separate fire-and-forget calls allowed a completion or retry in between to
-  // move the queue index before the requested track had begun loading.
-  unawaited(ref.read(audioHandlerProvider).playTrack(track, queue: queue));
 }
 
 const _sonoraGitHubUrl = 'https://github.com/Ayushpanditmoto';

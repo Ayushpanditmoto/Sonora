@@ -9,7 +9,7 @@ import 'services/download_store.dart';
 import 'services/track_source.dart';
 import 'services/youtube_api.dart';
 import 'sonora_app.dart';
-import 'ui/app_shell.dart';
+import 'state/download_store_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
