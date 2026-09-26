@@ -27,7 +27,6 @@ const _drawerDestinations = <({Icon icon, Icon selectedIcon, String label})>[
 ];
 
 /// App-wide navigation and project attribution.
-
 class AppDrawer extends StatelessWidget {
   const AppDrawer({
     required this.selectedIndex,
@@ -435,4 +434,3 @@ class _GitHubCard extends StatelessWidget {
     );
   }
 }
-

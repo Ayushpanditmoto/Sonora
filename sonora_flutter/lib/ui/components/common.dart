@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../shimmer.dart';
 import '../sonora_theme.dart';
 
+/// Opens the app drawer from a page-specific custom header.
 class NavBackButton extends StatelessWidget {
   const NavBackButton({super.key});
 

@@ -15,12 +15,12 @@ Download the latest universal Android build from GitHub Releases:
 
 **[⬇ Download the latest Sonora APK](https://github.com/Ayushpanditmoto/Sonora/releases/latest)**
 
-The current release is [Sonora v1.0.3](https://github.com/Ayushpanditmoto/Sonora/releases/tag/v1.0.3). APK builds are open-source sideloading releases and use Flutter's automatic debug signing; no private keystore is stored in this repository. Android may ask you to allow installs from unknown sources. If Android reports a signing conflict when installing a newer build, uninstall the previous Sonora version first.
+The current release is [Sonora v1.0.4](https://github.com/Ayushpanditmoto/Sonora/releases/tag/v1.0.4). APK builds are open-source sideloading releases and use Flutter's automatic debug signing; no private keystore is stored in this repository. Android may ask you to allow installs from unknown sources. If Android reports a signing conflict when installing a newer build, uninstall the previous Sonora version first.
 
 A SHA-256 checksum is published beside every APK:
 
-- [Sonora-1.0.3+4.apk](https://github.com/Ayushpanditmoto/Sonora/releases/download/v1.0.3/Sonora-1.0.3%2B4.apk)
-- [SHA-256 checksum](https://github.com/Ayushpanditmoto/Sonora/releases/download/v1.0.3/Sonora-1.0.3%2B4.apk.sha256)
+- [Sonora-1.0.4+5.apk](https://github.com/Ayushpanditmoto/Sonora/releases/download/v1.0.4/Sonora-1.0.4%2B5.apk)
+- [SHA-256 checksum](https://github.com/Ayushpanditmoto/Sonora/releases/download/v1.0.4/Sonora-1.0.4%2B5.apk.sha256)
 
 > **Upgrading to v1.0.3:** music now loads from JioSaavn directly instead of through a third-party proxy that stopped working. Existing offline downloads cannot be matched to the new track identifiers, so they are cleared on first launch. Re-download anything you want to keep offline.
 
